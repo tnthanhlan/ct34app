@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bảng chấm công & lương — CT34</title>
 <link rel="stylesheet" href="/styles.css">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#1E4759">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CT34">
 </head>
 <body>
 
@@ -34,6 +41,7 @@
   <button class="tab-btn active" data-tab="common">Common</button>
   <button class="tab-btn" data-tab="chamcong">Bảng Công</button>
   <button class="tab-btn" data-tab="dangky">Chấm công</button>
+  <button class="tab-btn" data-tab="tonghopnam">Tổng hợp năm</button>
   <button class="tab-btn" data-tab="anca">Ăn ca</button>
   <button class="tab-btn" data-tab="ghichu">Ghi chú / mã chấm công</button>
 </div>
@@ -53,20 +61,21 @@
   <table id="commonTable">
     <thead>
       <tr>
-        <th style="width:26px">TT</th>
-        <th style="width:150px">Họ và tên</th>
-        <th style="width:90px">Ngày sinh</th>
-        <th style="width:150px">Chức danh công việc</th>
-        <th style="width:80px">Thang bảng lương</th>
-        <th style="width:90px">Bậc</th>
-        <th style="width:60px">Hệ số</th>
-        <th style="width:110px">Mức lương</th>
-        <th style="width:110px">Phụ cấp trách nhiệm</th>
-        <th style="width:70px">Hệ số lương chức danh</th>
-        <th style="width:150px">Phụ cấp thêm (M3 / 5% / KSG)</th>
-        <th style="width:110px">Loại lịch</th>
-        <th style="width:80px">Thuộc kíp</th>
-        <th style="width:70px">Độ lệch pha (0-7)</th>
+        <th style="width:22px">TT</th>
+        <th style="width:130px">Họ và tên</th>
+        <th style="width:68px">Ngày sinh</th>
+        <th style="width:110px">Chức danh</th>
+        <th style="width:52px">Thang bảng</th>
+        <th style="width:70px">Bậc</th>
+        <th style="width:40px">Hệ số</th>
+        <th style="width:85px">Mức lương</th>
+        <th style="width:155px">Phụ cấp trách nhiệm</th>
+        <th style="width:95px">Tổng lương + PC</th>
+        <th style="width:55px">HS chức danh</th>
+        <th style="width:170px">Phụ cấp thêm (M3 / 5% / KSG)</th>
+        <th style="width:155px">Loại lịch</th>
+        <th style="width:130px">Thuộc kíp</th>
+        <th style="width:48px">Lệch pha</th>
       </tr>
     </thead>
     <tbody id="commonBody"></tbody>
@@ -131,13 +140,24 @@
   <div id="dkSummary" class="note"></div>
 </div>
 
+<!-- ================= TONG HOP NAM ================= -->
+<div class="panel hidden" id="tab-tonghopnam">
+  <div class="toolbar">
+    <label>Năm</label><select id="selYearTHN"></select>
+  </div>
+  <div class="note" style="margin-bottom:10px">
+    Theo dõi tổng số công <b>phép (F)</b> đã nghỉ từng tháng và luỹ kế từ đầu năm, cùng trạng thái phụ cấp <b>M3</b> / <b>5%</b> áp dụng riêng cho từng tháng (khác với mặc định ở tab Common — ở đây có thể bật/tắt riêng theo từng tháng nếu tháng đó có thay đổi phụ cấp). Số liệu Phép (F) tự tính từ dữ liệu Bảng Công, cập nhật ngay khi có thay đổi.
+  </div>
+  <div class="cc-wrap"><table id="thnTable"></table></div>
+</div>
+
 <!-- ================= AN CA ================= -->
 <div class="panel hidden" id="tab-anca">
   <div class="note" style="margin-bottom:10px">
-    Số công = tổng công quy đổi trong tháng (X+XĐ+XL+XLĐ+K1+K2+KD+K1L+K2L+KDL); Số bữa ăn ước tính = Số công trừ số ca đêm/ca 3 lễ (KD+XĐ+KDL+XLĐ).
+    Số công = tổng công quy đổi trong tháng (X+XĐ+XL+XLĐ+K1+K2+KD+K1L+K2L+KDL); Số bữa ăn ước tính = Số công trừ số ca đêm/ca 3 lễ (KD+XĐ+KDL+XLĐ). Các cột số đều tự tính sẵn nhưng có thể sửa tay để điều chỉnh — ô nào sửa tay sẽ được giữ nguyên, không bị tính lại tự động nữa.
   </div>
   <table id="mealTable">
-    <thead><tr><th>TT</th><th>Họ và tên</th><th>Số công</th><th>Số ca 3 (KD+XĐ+KDL+XLĐ)</th><th>Số bữa ăn ước tính</th></tr></thead>
+    <thead><tr><th style="width:26px">TT</th><th style="width:140px">Họ và tên</th><th style="width:70px">Số công</th><th style="width:70px">Số ca 3</th><th style="width:80px">Số bữa ăn</th><th>Ghi chú</th></tr></thead>
     <tbody id="mealBody"></tbody>
   </table>
 </div>

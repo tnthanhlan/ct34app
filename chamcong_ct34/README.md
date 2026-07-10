@@ -2,6 +2,13 @@
 
 Bản này khác hẳn file HTML cũ: có **server thật** chạy trên Mini PC của bạn (cùng máy đang chạy Home Assistant OS), có **đăng nhập bằng mật khẩu thật** (không phải chỉ gõ email), dữ liệu lưu **chung trên server** nên mở từ điện thoại, laptop, máy tính nào cũng thấy y hệt nhau — và server tự động xuất file CSV vào lúc 00:05 ngày 1 hằng tháng, hoàn toàn không cần bấm nút gì.
 
+## Có gì mới ở bản 1.2.0
+- Bảng Công: bỏ hết màu nền các ô ngày cho đỡ rối mắt, chỉ còn chữ đen/xám đơn giản.
+- Common: thu gọn các cột dữ liệu ngắn, mở rộng các cột có dropdown, thêm cột "Tổng lương + PC".
+- Tab mới **"Tổng hợp năm"**: theo dõi số công phép (F) từng tháng + luỹ kế cả năm, và bật/tắt phụ cấp M3/5% riêng theo từng tháng (khác mặc định ở Common nếu tháng đó có thay đổi).
+- Ăn ca: thu gọn cột, thêm cột **Ghi chú**, các cột số cho phép sửa tay đè lên số tự tính.
+- Cài được như **app trên điện thoại** (PWA) — xem mục "Cài lên điện thoại" bên dưới.
+
 ---
 
 ## Cách 1 (khuyên dùng): Cài làm Local Add-on trong Home Assistant
@@ -129,3 +136,22 @@ Admin sửa được mọi thứ (Common, Bảng Công, tài khoản...). User c
 ## Sao lưu dữ liệu
 
 Toàn bộ dữ liệu nằm trong 1 file duy nhất: `data/db.json`. Thỉnh thoảng chép file này ra chỗ khác (qua Samba) là đủ để backup toàn bộ hệ thống.
+
+---
+
+## Cài lên điện thoại như 1 app (PWA)
+
+Từ bản 1.2.0, trang web này có thể "cài" thẳng vào màn hình chính điện thoại, có icon riêng, mở fullscreen như app thật — không cần lên App Store/CH Play.
+
+**Trên Android (Chrome):**
+1. Mở `https://chamcong.tnthanhlan.trade` trên Chrome.
+2. Bấm menu **⋮** (góc trên phải) → **"Add to Home screen"** (hoặc Chrome có thể tự hiện banner gợi ý cài đặt).
+3. Xác nhận → icon CT34 xuất hiện ngay trên màn hình chính.
+
+**Trên iPhone (Safari):**
+1. Mở `https://chamcong.tnthanhlan.trade` trên Safari (bắt buộc dùng Safari, Chrome trên iOS không hỗ trợ mục này).
+2. Bấm nút **Share** (hình vuông có mũi tên) ở thanh dưới.
+3. Chọn **"Add to Home Screen"**.
+4. Xác nhận → icon CT34 xuất hiện trên màn hình chính.
+
+Sau khi cài, mở app từ icon sẽ không còn thanh địa chỉ trình duyệt, trông giống hệt app thật. Vẫn cần đăng nhập lại nếu phiên hết hạn, dữ liệu vẫn nằm hoàn toàn trên server như bản web thường — chỉ là cách mở nhanh hơn thôi.

@@ -80,17 +80,26 @@ function computeFinalCode(emp, y, m, d){
   }
   return computeAutoCode(emp, y, m, d);
 }
-function employeePayroll(emp){
+function getEffectiveAllow(emp, y, m){
+  if(y!=null && m!=null){
+    const key = `${emp.id}_${y}-${String(m+1).padStart(2,'0')}`;
+    const override = state.monthlyAllowances[key];
+    if(override) return { m3: !!override.m3, pct5: !!override.pct5, ksg: !!emp.allow.ksg };
+  }
+  return emp.allow;
+}
+function employeePayroll(emp, y, m){
   const bacEntry = state.bacTable.find(b=>b[0]===emp.bac);
   const heso = bacEntry ? bacEntry[1] : 0;
   const mucLuong = state.settings.mucLuongToiThieu * heso;
   const phuCap = emp.phucap==='catruong' ? state.settings.mucLuongToiThieu*state.settings.heSoTca
                : emp.phucap==='totruong' ? state.settings.mucLuongToiThieu*state.settings.heSoTtruong : 0;
   const ks = isKS(emp.bac);
+  const allow = getEffectiveAllow(emp, y, m);
   const hesoCDHieuLuc = Number(emp.hesoCD||0)
-    + (emp.allow.m3 ? (ks?0.25:0.16) : 0)
-    + (emp.allow.pct5 ? (ks?0.16:0.13) : 0)
-    + (emp.allow.ksg ? 0.3 : 0);
+    + (allow.m3 ? (ks?0.25:0.16) : 0)
+    + (allow.pct5 ? (ks?0.16:0.13) : 0)
+    + (allow.ksg ? 0.3 : 0);
   return { mucLuong, phuCap, tongLuongPhuCap: mucLuong+phuCap, hesoCDHieuLuc };
 }
 function empGroupColor(emp){
@@ -194,6 +203,8 @@ function applyRolePermissions(){
   const isUser = (currentRole !== 'admin');
   document.querySelectorAll('#tab-common input, #tab-common select, #tab-common button').forEach(el=>{ el.disabled = isUser; });
   document.querySelectorAll('#tab-chamcong select.daysel').forEach(el=>{ el.disabled = isUser; });
+  document.querySelectorAll('#tab-tonghopnam input').forEach(el=>{ el.disabled = isUser; });
+  document.querySelectorAll('#tab-anca input').forEach(el=>{ el.disabled = isUser; });
   ['btnClear','btnExportCSV'].forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = isUser; });
   const note = document.getElementById('commonRoleNote');
   if(note) note.classList.toggle('hidden', !isUser);
@@ -204,11 +215,12 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
-    ['common','chamcong','dangky','anca','ghichu'].forEach(t=>{
+    ['common','chamcong','dangky','tonghopnam','anca','ghichu'].forEach(t=>{
       document.getElementById('tab-'+t).classList.toggle('hidden', btn.dataset.tab!==t);
     });
     if(btn.dataset.tab==='chamcong') renderCalendar();
     if(btn.dataset.tab==='dangky') renderDangKy();
+    if(btn.dataset.tab==='tonghopnam') renderTongHopNam();
     if(btn.dataset.tab==='anca') renderMeal();
   });
 });
@@ -250,6 +262,7 @@ function renderCommon(){
         </select>
         <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${Math.round(phuCap).toLocaleString('vi-VN')} đ</div>
       </td>
+      <td style="text-align:right;font-weight:600">${Math.round(mucLuong+phuCap).toLocaleString('vi-VN')}</td>
       <td><input type="number" step="0.01" data-f="hesoCD" value="${emp.hesoCD}"></td>
       <td>
         <div class="chk-row"><input type="checkbox" data-f="m3" ${emp.allow.m3?'checked':''}> M3 (${ks?'0.25':'0.16'})</div>
@@ -410,6 +423,14 @@ function initMonthYearControls(){
   selMonthDK.addEventListener('change', ()=>{ viewMonth=Number(selMonthDK.value); onMonthYearChange(); });
   document.getElementById('selYear').addEventListener('change', e=>{ viewYear=Number(e.target.value); onMonthYearChange(); });
   document.getElementById('selYearDK').addEventListener('change', e=>{ viewYear=Number(e.target.value); onMonthYearChange(); });
+
+  const selYearTHN = document.getElementById('selYearTHN');
+  selYearTHN.innerHTML = '';
+  for(let y=viewYear-2; y<=viewYear+2; y++){
+    const opt = document.createElement('option'); opt.value=y; opt.textContent='Năm '+y; selYearTHN.appendChild(opt);
+  }
+  selYearTHN.value = viewYear;
+  selYearTHN.addEventListener('change', ()=>{ renderTongHopNam(); });
 }
 
 function renderLegendBar(){
@@ -449,14 +470,13 @@ function kipRowHtml(kip, nDays, leadCols, padCols){
   }
   for(let d=1; d<=nDays; d++){
     const idx = mod8(daysSinceAnchor(viewYear, viewMonth, d) + Number(kip.offset||0));
-    const code = CYCLE_CA[idx];
     const letter = PHASE_LETTERS[idx];
     const dow = new Date(viewYear, viewMonth, d).getDay();
     const wknd = (dow===0||dow===6);
     const td = document.createElement('td');
     if(wknd) td.classList.add('weekend');
-    td.style.background = code ? CODES[code].color : '#E7E9EC';
-    td.style.color = code ? '#fff' : '#8a94a0';
+    td.style.fontWeight = '700';
+    td.style.color = letter ? '#2C5F7C' : '#b7bec5';
     td.textContent = letter || '·';
     tr.appendChild(td);
   }
@@ -499,7 +519,7 @@ function buildBangCongRow(emp, nDays){
   nameTd.textContent = emp.name;
   tr.appendChild(nameTd);
 
-  const pay = employeePayroll(emp);
+  const pay = employeePayroll(emp, viewYear, viewMonth);
   const mucLuongTd = document.createElement('td');
   mucLuongTd.textContent = Math.round(pay.tongLuongPhuCap).toLocaleString('vi-VN');
   mucLuongTd.style.textAlign = 'right';
@@ -532,13 +552,11 @@ function buildBangCongRow(emp, nDays){
       const shiftLabel = PHASE_TO_SHIFTLABEL[phaseLetter];
       const opt = Array.from(sel.options).find(o=>o.value===code);
       if(opt) opt.textContent = shiftLabel + ' ('+code+')';
-      sel.style.background = PHASE_TO_COLOR[phaseLetter];
-      sel.style.color = '#fff';
       sel.title = 'Ca '+shiftLabel+' — mã chấm công thực: '+code;
-    } else {
-      sel.style.background = CODES[code].color;
-      sel.style.color = code==='' ? CODES[''].text : '#fff';
     }
+    sel.style.background = '#fff';
+    sel.style.color = code ? '#1F2933' : '#b7bec5';
+    sel.style.fontWeight = '700';
     sel.addEventListener('change', async ()=>{
       await setGridCode(emp.id, dateStr, sel.value);
       renderCalendar();
@@ -754,6 +772,21 @@ function renderRegSummary(nDays){
 }
 
 /* ================= An ca tab ================= */
+function mealKey(empId){ return `${empId}_${viewYear}-${String(viewMonth+1).padStart(2,'0')}`; }
+
+async function saveMealOverride(empId, patch){
+  const key = mealKey(empId);
+  const existing = state.mealOverrides[key] || {soCong:null, soCa3:null, soBuaAn:null, ghiChu:''};
+  const merged = Object.assign({}, existing, patch);
+  state.mealOverrides[key] = merged;
+  try{
+    await api('PUT', '/api/state/meal-override', {
+      empId, yearMonth: `${viewYear}-${String(viewMonth+1).padStart(2,'0')}`,
+      soCong: merged.soCong, soCa3: merged.soCa3, soBuaAn: merged.soBuaAn, ghiChu: merged.ghiChu
+    });
+  }catch(e){ alert('Không lưu được: '+e.message); }
+}
+
 function renderMeal(){
   if(!state) return;
   const nDays = daysInMonth(viewYear, viewMonth);
@@ -766,12 +799,145 @@ function renderMeal(){
       count[code]=(count[code]||0)+1;
     }
     const AJ = WORK_CODES.reduce((s,c)=>s+count[c],0);
-    const ca3 = count['KD']+count['XĐ']+count['KDL']+count['XLĐ'];
-    const meal = Math.max(0, AJ-ca3);
+    const ca3Auto = count['KD']+count['XĐ']+count['KDL']+count['XLĐ'];
+    const mealAuto = Math.max(0, AJ-ca3Auto);
+    const ov = state.mealOverrides[mealKey(emp.id)] || {soCong:null, soCa3:null, soBuaAn:null, ghiChu:''};
+
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${idx+1}</td><td>${escapeHtml(emp.name)}</td><td style="text-align:center">${AJ}</td><td style="text-align:center">${ca3}</td><td style="text-align:center">${meal}</td>`;
+    const tdTT = document.createElement('td'); tdTT.textContent = idx+1; tr.appendChild(tdTT);
+    const tdName = document.createElement('td'); tdName.textContent = emp.name; tr.appendChild(tdName);
+
+    function numCell(value, autoValue, field){
+      const td = document.createElement('td');
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.style.width = '100%';
+      inp.style.textAlign = 'center';
+      inp.value = (value===null||value===undefined) ? autoValue : value;
+      if(value===null||value===undefined) inp.style.color = 'var(--ink-soft)';
+      inp.addEventListener('change', async ()=>{
+        const v = inp.value==='' ? null : Number(inp.value);
+        await saveMealOverride(emp.id, {[field]: v});
+        renderMeal();
+      });
+      td.appendChild(inp);
+      return td;
+    }
+    tr.appendChild(numCell(ov.soCong, AJ, 'soCong'));
+    tr.appendChild(numCell(ov.soCa3, ca3Auto, 'soCa3'));
+    tr.appendChild(numCell(ov.soBuaAn, mealAuto, 'soBuaAn'));
+
+    const tdNote = document.createElement('td');
+    const noteInp = document.createElement('input');
+    noteInp.type = 'text';
+    noteInp.style.width = '100%';
+    noteInp.value = ov.ghiChu || '';
+    noteInp.placeholder = 'Ghi chú...';
+    noteInp.addEventListener('change', async ()=>{
+      await saveMealOverride(emp.id, {ghiChu: noteInp.value});
+    });
+    tdNote.appendChild(noteInp);
+    tr.appendChild(tdNote);
+
     body.appendChild(tr);
   });
+  applyRolePermissions();
+}
+
+/* ================= Tong hop nam tab ================= */
+const THN_MONTH_LABELS = ['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'];
+
+async function saveMonthlyAllowance(empId, year, month, m3, pct5){
+  const yearMonth = `${year}-${String(month+1).padStart(2,'0')}`;
+  const key = `${empId}_${yearMonth}`;
+  state.monthlyAllowances[key] = {m3, pct5};
+  try{
+    await api('PUT', '/api/state/monthly-allowance', {empId, yearMonth, m3, pct5});
+  }catch(e){ alert('Không lưu được: '+e.message); }
+}
+
+function renderTongHopNam(){
+  if(!state) return;
+  const year = Number(document.getElementById('selYearTHN').value);
+  const table = document.getElementById('thnTable');
+  table.innerHTML = '';
+
+  const thead = document.createElement('thead');
+  const row1 = document.createElement('tr');
+  const row2 = document.createElement('tr');
+  const nameTh = document.createElement('th');
+  nameTh.className = 'namecell';
+  nameTh.textContent = 'Nhân sự';
+  nameTh.rowSpan = 2;
+  row1.appendChild(nameTh);
+  for(let m=0; m<12; m++){
+    const th = document.createElement('th');
+    th.colSpan = 3;
+    th.textContent = THN_MONTH_LABELS[m];
+    row1.appendChild(th);
+    ['F','M3','5%'].forEach(lbl=>{
+      const th2 = document.createElement('th');
+      th2.textContent = lbl;
+      th2.style.fontSize = '10px';
+      row2.appendChild(th2);
+    });
+  }
+  const totalTh = document.createElement('th');
+  totalTh.textContent = 'Tổng F cả năm';
+  totalTh.rowSpan = 2;
+  row1.appendChild(totalTh);
+  thead.appendChild(row1); thead.appendChild(row2);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  state.employees.forEach(emp=>{
+    const tr = document.createElement('tr');
+    const nameTd = document.createElement('td');
+    nameTd.className = 'namecell';
+    nameTd.textContent = emp.name;
+    tr.appendChild(nameTd);
+
+    let totalF = 0;
+    for(let m=0; m<12; m++){
+      const nDays = daysInMonth(year, m);
+      let fCount = 0;
+      for(let d=1; d<=nDays; d++){
+        if(computeFinalCode(emp, year, m, d) === 'F') fCount++;
+      }
+      totalF += fCount;
+      const key = `${emp.id}_${year}-${String(m+1).padStart(2,'0')}`;
+      const override = state.monthlyAllowances[key];
+      const m3 = override ? override.m3 : emp.allow.m3;
+      const pct5 = override ? override.pct5 : emp.allow.pct5;
+
+      const tdF = document.createElement('td');
+      tdF.textContent = fCount || '';
+      tdF.style.textAlign = 'center';
+      tdF.style.color = fCount ? 'var(--ink)' : 'var(--ink-soft)';
+      tr.appendChild(tdF);
+
+      const tdM3 = document.createElement('td');
+      const chkM3 = document.createElement('input');
+      chkM3.type = 'checkbox'; chkM3.checked = !!m3;
+      chkM3.addEventListener('change', ()=>saveMonthlyAllowance(emp.id, year, m, chkM3.checked, chk5.checked));
+      tdM3.style.textAlign='center'; tdM3.appendChild(chkM3); tr.appendChild(tdM3);
+
+      const tdPct5 = document.createElement('td');
+      const chk5 = document.createElement('input');
+      chk5.type = 'checkbox'; chk5.checked = !!pct5;
+      chk5.addEventListener('change', ()=>saveMonthlyAllowance(emp.id, year, m, chkM3.checked, chk5.checked));
+      tdPct5.style.textAlign='center'; tdPct5.appendChild(chk5); tr.appendChild(tdPct5);
+    }
+    const tdTotal = document.createElement('td');
+    tdTotal.textContent = totalF;
+    tdTotal.className = 'sumcell';
+    tdTotal.style.textAlign = 'center';
+    tr.appendChild(tdTotal);
+
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  applyRolePermissions();
 }
 
 /* ================= Ghi chu tab ================= */
@@ -814,3 +980,9 @@ async function bootApp(){
   const loggedIn = await checkSession();
   if(loggedIn) await bootApp();
 })();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  });
+}

@@ -107,17 +107,27 @@ function computeFinalCode(state, emp, y, m, d) {
   }
   return computeAutoCode(state, emp, y, m, d);
 }
-function employeePayroll(state, emp) {
+function getEffectiveAllow(state, emp, y, m) {
+  if (y != null && m != null) {
+    const key = `${emp.id}_${y}-${String(m + 1).padStart(2, '0')}`;
+    const override = state.monthlyAllowances[key];
+    if (override) return { m3: !!override.m3, pct5: !!override.pct5, ksg: !!emp.allow.ksg };
+  }
+  return emp.allow;
+}
+
+function employeePayroll(state, emp, y, m) {
   const bacEntry = state.bacTable.find(b => b[0] === emp.bac);
   const heso = bacEntry ? bacEntry[1] : 0;
   const mucLuong = state.settings.mucLuongToiThieu * heso;
   const phuCap = emp.phucap === 'catruong' ? state.settings.mucLuongToiThieu * state.settings.heSoTca
     : emp.phucap === 'totruong' ? state.settings.mucLuongToiThieu * state.settings.heSoTtruong : 0;
   const ks = isKS(emp.bac);
+  const allow = getEffectiveAllow(state, emp, y, m);
   const hesoCDHieuLuc = Number(emp.hesoCD || 0)
-    + (emp.allow.m3 ? (ks ? 0.25 : 0.16) : 0)
-    + (emp.allow.pct5 ? (ks ? 0.16 : 0.13) : 0)
-    + (emp.allow.ksg ? 0.3 : 0);
+    + (allow.m3 ? (ks ? 0.25 : 0.16) : 0)
+    + (allow.pct5 ? (ks ? 0.16 : 0.13) : 0)
+    + (allow.ksg ? 0.3 : 0);
   return { mucLuong, phuCap, tongLuongPhuCap: mucLuong + phuCap, hesoCDHieuLuc };
 }
 
@@ -129,7 +139,7 @@ function buildMonthCSV(state, y, m) {
   header.push('Công(AJ)', 'Ca3(AK)', 'Lễ+phép(AL)', 'Du lịch(AM)', 'Bù lễ(AO)', 'Riêng lg(AP)', 'Ốm/TN/TS(AQ)', 'Ca3 lễ(AR)', 'Phép(AU)', 'Lễ(AV)', 'Bù(AW)');
   rows.push(header.join(','));
   state.employees.forEach(emp => {
-    const pay = employeePayroll(state, emp);
+    const pay = employeePayroll(state, emp, y, m);
     const row = [emp.name, Math.round(pay.tongLuongPhuCap), pay.hesoCDHieuLuc.toFixed(2)];
     const count = {}; CODE_ORDER.forEach(c => count[c] = 0);
     for (let d = 1; d <= nDays; d++) {
@@ -210,6 +220,32 @@ app.put('/api/state/grid', requireAuth, requireAdmin, (req, res) => {
   if (!db.state.grid[empId]) db.state.grid[empId] = {};
   if (!code) delete db.state.grid[empId][dateStr];
   else db.state.grid[empId][dateStr] = code;
+  persist();
+  res.json({ ok: true });
+});
+
+app.put('/api/state/monthly-allowance', requireAuth, requireAdmin, (req, res) => {
+  const { empId, yearMonth, m3, pct5 } = req.body || {};
+  if (!empId || !yearMonth) return res.status(400).json({ error: 'Thiếu empId hoặc yearMonth.' });
+  const db = getDb();
+  const key = `${empId}_${yearMonth}`;
+  db.state.monthlyAllowances[key] = { m3: !!m3, pct5: !!pct5 };
+  persist();
+  res.json({ ok: true });
+});
+
+app.put('/api/state/meal-override', requireAuth, requireAdmin, (req, res) => {
+  const { empId, yearMonth, soCong, soCa3, soBuaAn, ghiChu } = req.body || {};
+  if (!empId || !yearMonth) return res.status(400).json({ error: 'Thiếu empId hoặc yearMonth.' });
+  const db = getDb();
+  const key = `${empId}_${yearMonth}`;
+  const existing = db.state.mealOverrides[key] || {};
+  db.state.mealOverrides[key] = {
+    soCong: soCong === '' || soCong === null || soCong === undefined ? null : Number(soCong),
+    soCa3: soCa3 === '' || soCa3 === null || soCa3 === undefined ? null : Number(soCa3),
+    soBuaAn: soBuaAn === '' || soBuaAn === null || soBuaAn === undefined ? null : Number(soBuaAn),
+    ghiChu: ghiChu !== undefined ? ghiChu : (existing.ghiChu || '')
+  };
   persist();
   res.json({ ok: true });
 });

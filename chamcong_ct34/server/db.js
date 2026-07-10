@@ -41,7 +41,9 @@ function defaultState() {
       { id: 'D', label: 'Kíp D', offset: 5, color: '#F1E5F6' }
     ],
     grid: {},
-    registrations: {}
+    registrations: {},
+    monthlyAllowances: {},
+    mealOverrides: {}
   };
 }
 
@@ -66,6 +68,11 @@ function load() {
     cache = { users: [], state: defaultState() };
     save(cache);
   }
+  // Migration: dien them cac truong moi neu ban db.json cu (truoc khi co tinh nang nay) chua co
+  let migrated = false;
+  if (!cache.state.monthlyAllowances) { cache.state.monthlyAllowances = {}; migrated = true; }
+  if (!cache.state.mealOverrides) { cache.state.mealOverrides = {}; migrated = true; }
+  if (migrated) save(cache);
   return cache;
 }
 
