@@ -57,7 +57,10 @@ function computeAutoCode(emp, y, m, d){
     return (dow===0||dow===6) ? '' : 'X';
   }
   const idx = mod8(daysSinceAnchor(y,m,d) + resolvedOffset(emp));
-  return (emp.schedule==='CA' ? CYCLE_CA : CYCLE_TAM)[idx];
+  // Nguoi thuoc 1 kip cu the tinh thang K1/K2/KD (giong dong Kip mau phia tren), khong con dung X/XD nua.
+  // Chi nguoi Tam-xoay-ca doc lap (khong gan kip nao) moi dung X/XD.
+  const useShiftCodes = (emp.schedule==='CA') || (emp.schedule==='TAM' && emp.kipId);
+  return (useShiftCodes ? CYCLE_CA : CYCLE_TAM)[idx];
 }
 function computeFinalCode(emp, y, m, d){
   const dateStr = fmtDate(y,m,d);
@@ -544,16 +547,6 @@ function buildBangCongRow(emp, nDays){
     const sel = document.createElement('select');
     sel.className = 'daysel';
     sel.innerHTML = codeSelectHtml(code);
-
-    const autoCode = computeAutoCode(emp, viewYear, viewMonth, d);
-    const idxPhase = mod8(daysSinceAnchor(viewYear, viewMonth, d) + resolvedOffset(emp));
-    const phaseLetter = PHASE_LETTERS[idxPhase];
-    if(emp.kipId && emp.schedule==='TAM' && phaseLetter && code===autoCode){
-      const shiftLabel = PHASE_TO_SHIFTLABEL[phaseLetter];
-      const opt = Array.from(sel.options).find(o=>o.value===code);
-      if(opt) opt.textContent = shiftLabel + ' ('+code+')';
-      sel.title = 'Ca '+shiftLabel+' — mã chấm công thực: '+code;
-    }
     sel.style.background = '#fff';
     sel.style.color = code ? '#1F2933' : '#b7bec5';
     sel.style.fontWeight = '700';

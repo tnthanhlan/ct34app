@@ -84,7 +84,8 @@ function computeAutoCode(state, emp, y, m, d) {
     return (dow === 0 || dow === 6) ? '' : 'X';
   }
   const idx = mod8(daysSinceAnchor(state, y, m, d) + resolvedOffset(state, emp));
-  return (emp.schedule === 'CA' ? CYCLE_CA : CYCLE_TAM)[idx];
+  const useShiftCodes = (emp.schedule === 'CA') || (emp.schedule === 'TAM' && emp.kipId);
+  return (useShiftCodes ? CYCLE_CA : CYCLE_TAM)[idx];
 }
 function computeFinalCode(state, emp, y, m, d) {
   const dateStr = fmtDate(y, m, d);
