@@ -1,5 +1,5 @@
 name: "Chấm công & lương - CT34"
-version: "1.2.0"
+version: "1.2.1"
 slug: "chamcong_ct34"
 description: "He thong cham cong & luong ca kip, xac thuc that (Admin/User), tu dong xuat file CSV hang thang, tu mang theo Cloudflare Tunnel rieng, cai duoc nhu app dien thoai (PWA)"
 url: "https://github.com/tnthanhlan/ct34app"

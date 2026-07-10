@@ -319,7 +319,13 @@ cron.schedule('50 23 * * *', () => {
 });
 
 /* ---------------- Static frontend ---------------- */
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  setHeaders: (res, filePath) => {
+    if (/\.(html|js|css)$/.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+  }
+}));
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));

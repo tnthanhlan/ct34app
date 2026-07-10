@@ -1,8 +1,9 @@
 // Service worker toi gian, chi de thoa dieu kien "installable" cua PWA.
 // Khong cache API (/api/...) de tranh du lieu cu/sai phien dang nhap.
-// Cac file tinh (html/css/js/icon) dung chien luoc network-first, cache lam du phong khi mat mang.
-const CACHE_NAME = 'ct34-shell-v1';
-const SHELL_FILES = ['/', '/index.html', '/styles.css', '/app.js', '/manifest.json'];
+// CHI pre-cache nhung file it doi (icon/manifest) - KHONG pre-cache app.js/index.html/styles.css
+// de tranh giu lai ban cu khi co cap nhat code (moi lan fetch van uu tien lay ban moi nhat tu mang).
+const CACHE_NAME = 'ct34-shell-v2';
+const SHELL_FILES = ['/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
