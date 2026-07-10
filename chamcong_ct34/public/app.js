@@ -647,6 +647,14 @@ function getSwapPartner(dateStr, empId){
   for(const pair of r.swaps){ if(pair[0]===empId) return pair[1]; if(pair[1]===empId) return pair[0]; }
   return null;
 }
+const SWAP_PAIR_COLORS = ['#BEE3F8','#D9F2D2','#FFE3B3','#E4D6F7','#FFD3DE','#C8ECEA','#F5E1B8','#D6E4F0'];
+function getSwapPairColor(dateStr, empId){
+  const r = state.registrations[dateStr];
+  if(!r || !r.swaps) return null;
+  const idx = r.swaps.findIndex(pair=>pair[0]===empId || pair[1]===empId);
+  if(idx<0) return null;
+  return SWAP_PAIR_COLORS[idx % SWAP_PAIR_COLORS.length];
+}
 function empNameById(id){ const e = state.employees.find(x=>x.id===id); return e ? e.name : id; }
 
 document.getElementById('btnGenKip').addEventListener('click', ()=>{
@@ -707,11 +715,13 @@ function buildDangKyRow(emp, nDays){
     const wknd = (dow===0||dow===6);
     const phep = isPhep(dateStr, emp.id);
     const partner = getSwapPartner(dateStr, emp.id);
+    const pairColor = partner ? getSwapPairColor(dateStr, emp.id) : null;
     const pending = pendingSwap && pendingSwap.dateStr===dateStr && pendingSwap.empId===emp.id;
     const td = document.createElement('td');
     if(wknd) td.classList.add('weekend');
     const div = document.createElement('div');
-    div.className = 'dk-cell' + (phep?' dk-phep':'') + (partner?' dk-swap':'') + (pending?' dk-pending':'');
+    div.className = 'dk-cell' + (phep?' dk-phep':'') + (pending?' dk-pending':'');
+    if(pairColor) div.style.background = pairColor;
     div.textContent = phep ? 'F' : (partner ? '⇄' : '');
     if(partner) div.title = 'Đổi ca với: ' + empNameById(partner);
     div.addEventListener('click', ()=>onRegCellClick(dateStr, emp.id));
