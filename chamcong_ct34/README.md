@@ -32,15 +32,42 @@ Bấm **Save**.
 ### Bước 4 — Khởi động
 Qua tab **Info** → bấm **Start**. Xem tab **Log** thấy dòng `✓ Đã tự tạo 2 tài khoản...` là thành công. (Nếu đổi mật khẩu sau này: xoá 2 dòng user trong `data/db.json` qua Samba rồi khởi động lại add-on, hoặc dùng tính năng đổi mật khẩu nếu bạn nhờ mình bổ sung thêm sau).
 
-### Bước 5 — Trỏ Cloudflare Tunnel vào add-on này
-Bạn đã có Cloudflare Tunnel chạy cho Home Assistant rồi, giờ thêm 1 **Public Hostname** mới trỏ vào add-on:
-1. Vào **Cloudflare Zero Trust dashboard → Networks → Tunnels** → chọn tunnel bạn đang dùng.
-2. **Public Hostname** → **Add a public hostname**.
-3. Subdomain: ví dụ `chamcong` (ra `chamcong.tnthanhlan.trade`).
-4. Service: **Type = HTTP**, **URL = `localhost:8099`** (hoặc địa chỉ IP nội bộ Mini PC + cổng 8099 nếu tunnel không chạy cùng máy).
-5. Save.
+### Bước 5 — Tạo Cloudflare Tunnel RIÊNG cho CT34 (an toàn, không đụng gì tới Home Assistant)
 
-Xong — mở `https://chamcong.tnthanhlan.trade` từ điện thoại, laptop, ở đâu cũng vào được, có ổ khoá HTTPS thật do Cloudflare cấp.
+⚠️ **Quan trọng:** KHÔNG dùng chung tunnel/add-on Cloudflared đang chạy cho Home Assistant. CT34 giờ tự mang theo Cloudflare Tunnel riêng, chạy ngay bên trong container của chính nó — nếu tunnel này có lỗi gì, chỉ CT34 bị ảnh hưởng, Home Assistant không bao giờ bị đụng tới.
+
+**5.1 — Tạo tunnel mới trên Cloudflare (làm trên trang web, không phải trong Home Assistant):**
+1. Vào **dash.cloudflare.com** (Zero Trust dashboard) → **Networks → Tunnels**.
+2. Bấm **Create a tunnel**.
+3. Chọn loại **Cloudflared** → đặt tên bất kỳ, ví dụ `ct34`.
+4. Ở bước "Install and run a connector", Cloudflare sẽ hiện ra dòng lệnh dạng:
+   ```
+   cloudflared tunnel run --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.................
+   ```
+   Bạn **chỉ cần copy đúng đoạn token** (chuỗi dài sau chữ `--token`), không cần chạy lệnh này ở đâu cả — CT34 sẽ tự chạy nó.
+5. Bấm **Next**, tới bước **Public Hostname** → thêm:
+   - Subdomain: `chamcong`
+   - Domain: `tnthanhlan.trade`
+   - Service Type: **HTTP**
+   - URL: `localhost:8099`
+6. **Save tunnel**.
+
+**5.2 — Dán token vào cấu hình CT34 (làm trong Home Assistant):**
+1. Vào add-on **"Chấm công & lương - CT34"** → tab **Configuration**.
+2. Tìm ô mới **`cloudflare_tunnel_token`** → dán đúng token đã copy ở bước 5.1.
+3. **Save**.
+4. Qua tab **Info** → **Restart** add-on.
+5. Qua tab **Log**, phải thấy dòng:
+   ```
+   [CT34] Dang khoi dong Cloudflare Tunnel rieng cho CT34 (doc lap voi Home Assistant)...
+   [CT34] Cloudflare Tunnel rieng dang chay (PID ...)
+   Chấm công server đang chạy ở cổng 8099
+   ```
+
+**5.3 — Thử:**
+Mở `https://chamcong.tnthanhlan.trade` (tốt nhất bật 4G) — phải vào được màn hình đăng nhập CT34.
+
+Nếu sau này tunnel này có lỗi gì (chamcong.tnthanhlan.trade không vào được), **Home Assistant và `homeassistant.tnthanhlan.trade` hoàn toàn không bị ảnh hưởng** — vì đây là 2 tunnel, 2 container, 2 add-on hoàn toàn tách biệt.
 
 ---
 
@@ -82,6 +109,7 @@ Admin sửa được mọi thứ (Common, Bảng Công, tài khoản...). User c
 ├── config.yaml        # khai bao add-on cho Home Assistant Supervisor
 ├── build.yaml          # anh nen Docker theo tung kien truc CPU
 ├── Dockerfile
+├── run.sh               # tu khoi dong Cloudflare Tunnel rieng (neu co token) + chay server
 ├── docker-compose.yml  # phuong an chay ngoai HA (Cach 2)
 ├── .env.example
 ├── server/

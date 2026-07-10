@@ -1,7 +1,7 @@
 name: "Chấm công & lương - CT34"
-version: "1.0.0"
+version: "1.1.0"
 slug: "chamcong_ct34"
-description: "He thong cham cong & luong ca kip, xac thuc that (Admin/User), tu dong xuat file CSV hang thang"
+description: "He thong cham cong & luong ca kip, xac thuc that (Admin/User), tu dong xuat file CSV hang thang, tu mang theo Cloudflare Tunnel rieng"
 url: "https://github.com/tnthanhlan/ct34app"
 arch:
   - aarch64
@@ -19,16 +19,18 @@ map:
 ports:
   8099/tcp: 8099
 ports_description:
-  8099/tcp: "Giao diện web chấm công (trỏ qua Cloudflare Tunnel vào cổng này)"
+  8099/tcp: "Giao diện web chấm công (chỉ cần thiết nếu bạn không dùng Cloudflare Tunnel riêng, để truy cập qua IP nội bộ)"
 options:
   jwt_secret: ""
   admin_password: ""
   user_password: ""
   export_dir: "/share/chamcong_exports"
   port: 8099
+  cloudflare_tunnel_token: ""
 schema:
   jwt_secret: password
   admin_password: password
   user_password: password
   export_dir: str
   port: port
+  cloudflare_tunnel_token: password
