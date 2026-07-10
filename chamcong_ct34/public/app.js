@@ -147,6 +147,8 @@ function hideLogin(){
 function updateRoleBadge(){
   const badge = document.getElementById('roleBadge');
   badge.textContent = (currentRole==='admin' ? '👑 Admin' : '👤 User') + (currentEmail ? ' — '+currentEmail : '');
+  const backupBtn = document.getElementById('btnBackup');
+  if(backupBtn) backupBtn.classList.toggle('hidden', currentRole!=='admin');
 }
 
 document.getElementById('btnLogin').addEventListener('click', doLogin);

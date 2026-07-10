@@ -295,6 +295,15 @@ app.get('/api/export/csv', requireAuth, (req, res) => {
   res.send(csv);
 });
 
+/* ---------------- Sao luu toan bo du lieu (tai truc tiep qua trinh duyet, khong can Samba/Filebrowser) ---------------- */
+app.get('/api/admin/backup', requireAuth, requireAdmin, (req, res) => {
+  const db = getDb();
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="ct34_backup_${stamp}.json"`);
+  res.send(JSON.stringify(db.state, null, 2));
+});
+
 /* ---------------- Tu dong xuat file hang thang (that su khong can bam nut) ---------------- */
 function ensureExportDir() {
   if (!fs.existsSync(EXPORT_DIR)) fs.mkdirSync(EXPORT_DIR, { recursive: true });
