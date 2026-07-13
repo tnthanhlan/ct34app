@@ -1,5 +1,5 @@
 name: "Bảo trì & Vệ sinh - CT34"
-version: "1.0.1"
+version: "1.0.2"
 slug: "baotri_ct34"
 description: "Quản lý thông số động cơ, lịch vệ sinh - bảo dưỡng - bảo trì, tự xuất Excel hàng tuần"
 url: "https://github.com/tnthanhlan/ct34app"
@@ -12,10 +12,9 @@ arch:
 startup: application
 boot: auto
 init: false
-ingress: true
-ingress_port: 8100
 panel_icon: mdi:engine
 panel_title: "Bảo trì CT34"
+webui: "http://[HOST]:[PORT:8100]/"
 ports:
   8100/tcp: 8100
 ports_description:
