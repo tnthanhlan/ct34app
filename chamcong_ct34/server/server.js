@@ -138,7 +138,7 @@ function buildMonthCSV(state, y, m) {
   const header = ['Nhân sự', 'Mức lương + Phụ cấp', 'Hệ số lương chức danh'];
   for (let d = 1; d <= nDays; d++) header.push(String(d));
   header.push('Công(AJ)', 'Ca3(AK)', 'Lễ+phép(AL)', 'Du lịch(AM)', 'Bù lễ(AO)', 'Riêng lg(AP)', 'Ốm/TN/TS(AQ)', 'Ca3 lễ(AR)', 'Phép(AU)', 'Lễ(AV)', 'Bù(AW)');
-  rows.push(header.join(','));
+  rows.push(header.join(';'));
   state.employees.forEach(emp => {
     const pay = employeePayroll(state, emp, y, m);
     const row = [emp.name, Math.round(pay.tongLuongPhuCap), pay.hesoCDHieuLuc.toFixed(2)];
@@ -153,9 +153,9 @@ function buildMonthCSV(state, y, m) {
       count['L'] + count['F'] + count['XL'] + count['XLĐ'] + count['K1L'] + count['K2L'] + count['KDL'],
       count['DL'], count['XL'] + count['XLĐ'] + count['K1L'] + count['K2L'] + count['KDL'], count['Rc'],
       count['Ô'] + count['TN'] + count['TS'], count['XLĐ'] + count['KDL'], count['F'], count['L'], count['B'] + count['BL']);
-    rows.push(row.join(','));
+    rows.push(row.join(';'));
   });
-  return '\uFEFFsep=,\n' + rows.join('\n');
+  return '\uFEFF' + rows.join('\n');
 }
 
 /* ---------------- Auth routes ---------------- */
