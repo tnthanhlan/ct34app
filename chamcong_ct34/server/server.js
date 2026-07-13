@@ -155,7 +155,7 @@ function buildMonthCSV(state, y, m) {
       count['Ô'] + count['TN'] + count['TS'], count['XLĐ'] + count['KDL'], count['F'], count['L'], count['B'] + count['BL']);
     rows.push(row.join(','));
   });
-  return '\uFEFF' + rows.join('\n');
+  return '\uFEFFsep=,\n' + rows.join('\n');
 }
 
 /* ---------------- Auth routes ---------------- */
