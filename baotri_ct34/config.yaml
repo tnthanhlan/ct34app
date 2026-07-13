@@ -13,13 +13,13 @@ startup: application
 boot: auto
 init: false
 ingress: true
-ingress_port: 8099
+ingress_port: 8100
 panel_icon: mdi:engine
 panel_title: "Bảo trì CT34"
 ports:
-  8099/tcp: 8099
+  8100/tcp: 8100
 ports_description:
-  8099/tcp: "Web UI (dùng cho Cloudflare Tunnel trỏ domain ngoài)"
+  8100/tcp: "Web UI (dùng cho Cloudflare Tunnel trỏ domain ngoài)"
 map:
   - share:rw
 options:

@@ -21,7 +21,7 @@ fi
 
 export DB_PATH="/data/baotri.db"
 export EXPORT_DIR="/share/baotri_exports"
-export PORT="8099"
+export PORT="8100"
 
 mkdir -p "$EXPORT_DIR"
 mkdir -p "/data"

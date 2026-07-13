@@ -37,7 +37,7 @@ Sau khi Start, vào tab **Info** → bật **Show in sidebar** để có icon tr
 
 ## 3. Truy cập qua domain ngoài (baotrict34.tnthanhlan.trade)
 
-Add-on chạy ở cổng nội bộ **8099**. Vì CT34 (chấm công) đã dùng Cloudflare Tunnel để đưa ra ngoài internet,
+Add-on chạy ở cổng nội bộ **8100**. Vì CT34 (chấm công) đã dùng Cloudflare Tunnel để đưa ra ngoài internet,
 bạn chỉ cần thêm 1 **Public Hostname** mới trong cùng Tunnel đó, cấu hình dạng bên dưới rồi Save:
 
 ```
@@ -45,7 +45,7 @@ Subdomain: baotrict34
 Domain:    tnthanhlan.trade
 Path:      (để trống)
 Service:   HTTP
-URL:       homeassistant.local:8099   (hoặc IP nội bộ của máy HA, ví dụ 192.168.1.x:8099)
+URL:       homeassistant.local:8100   (hoặc IP nội bộ của máy HA, ví dụ 192.168.1.x:8100)
 ```
 
 Vào **Cloudflare Zero Trust dashboard → Networks → Tunnels → (tên tunnel đang dùng cho CT34) →
@@ -53,7 +53,7 @@ Public Hostname → Add a public hostname** để thêm mục trên.
 
 Nếu bạn không nhớ tunnel đang trỏ vào IP hay hostname nào, mở mục **Public Hostname** hiện có của
 CT34 (chấm công) để xem chính xác giá trị Service/URL đang dùng, rồi copy y hệt phần host, chỉ đổi port
-thành `8099`.
+thành `8100`.
 
 ## 4. Nhập dữ liệu lần đầu (400 động cơ + lịch bảo trì)
 
