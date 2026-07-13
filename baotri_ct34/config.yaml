@@ -1,0 +1,38 @@
+name: "Bảo trì & Vệ sinh - CT34"
+version: "1.0.0"
+slug: "baotri_ct34"
+description: "Quản lý thông số động cơ, lịch vệ sinh - bảo dưỡng - bảo trì, tự xuất Excel hàng tuần"
+url: "https://github.com/tnthanhlan/ct34app"
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+startup: application
+boot: auto
+init: false
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:engine
+panel_title: "Bảo trì CT34"
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: "Web UI (dùng cho Cloudflare Tunnel trỏ domain ngoài)"
+map:
+  - share:rw
+options:
+  admin_email: "tnthanhlan@gmail.com"
+  admin_password: "doimatkhaungay123"
+  user_email: "doisuachuact34@gmail.com"
+  user_password: "doimatkhaungay123"
+  session_secret: "hay-doi-chuoi-nay-thanh-ngau-nhien"
+  timezone: "Asia/Ho_Chi_Minh"
+schema:
+  admin_email: str
+  admin_password: password
+  user_email: str
+  user_password: password
+  session_secret: password
+  timezone: str
