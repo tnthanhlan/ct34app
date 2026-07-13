@@ -1,5 +1,5 @@
 name: "Bảo trì & Vệ sinh - CT34"
-version: "1.0.0"
+version: "1.0.1"
 slug: "baotri_ct34"
 description: "Quản lý thông số động cơ, lịch vệ sinh - bảo dưỡng - bảo trì, tự xuất Excel hàng tuần"
 url: "https://github.com/tnthanhlan/ct34app"
