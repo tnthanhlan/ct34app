@@ -1,0 +1,17 @@
+{
+  "name": "chamcong-server",
+  "version": "1.0.0",
+  "description": "Backend cham cong & luong cho CT34 - xac thuc that + tu dong xuat file hang thang",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "cookie-parser": "^1.4.6",
+    "node-cron": "^3.0.3"
+  }
+}
