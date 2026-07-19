@@ -103,6 +103,16 @@
     · "Ngày gốc chu kỳ ca" + "Độ lệch pha" của từng người/kíp cùng nhau quyết định chu kỳ 8 ngày chạy liên tục qua các tháng.<br>
     · Dữ liệu ở đây lưu trên server, dùng chung cho mọi thiết bị đăng nhập — chỉ Admin mới sửa được.
   </div>
+
+  <h3 class="sec">Snapshot tự động (server tự lưu định kỳ, không cần bấm gì)</h3>
+  <div class="note" style="margin-bottom:10px">
+    Cứ tối đa mỗi 10 phút có thay đổi gì, server tự lưu lại 1 bản chụp toàn bộ dữ liệu, giữ tối đa 50 bản gần nhất. Nếu phát hiện dữ liệu bị thiếu, tìm bản snapshot đúng thời điểm còn đủ dữ liệu bên dưới rồi bấm "Khôi phục".
+  </div>
+  <button class="btn" id="btnRefreshSnapshots" style="margin-bottom:8px">⟳ Tải lại danh sách</button>
+  <table class="bac-table" id="snapshotTable">
+    <thead><tr><th>Thời điểm lưu</th><th></th></tr></thead>
+    <tbody id="snapshotBody"></tbody>
+  </table>
 </div>
 
 <!-- ================= BANG CONG ================= -->

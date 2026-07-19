@@ -403,6 +403,57 @@ document.getElementById('btnAddKip').addEventListener('click', async ()=>{
   renderKipTable();
 });
 
+/* ================= Snapshot tu dong ================= */
+function formatSnapshotName(filename){
+  const m = filename.match(/snapshot_(.+)\.json/);
+  if(!m) return filename;
+  const raw = m[1]; // vd: 2026-07-19T12-34-56-789Z
+  const tIdx = raw.indexOf('T');
+  if(tIdx<0) return filename;
+  const datePart = raw.slice(0, tIdx);
+  const timePart = raw.slice(tIdx+1).replace('Z','');
+  const parts = timePart.split('-'); // [hh, mm, ss, ms]
+  const iso = `${datePart}T${parts[0]}:${parts[1]}:${parts[2]}.${parts[3]||'000'}Z`;
+  const d = new Date(iso);
+  if(isNaN(d)) return filename;
+  return d.toLocaleString('vi-VN');
+}
+async function renderSnapshots(){
+  const body = document.getElementById('snapshotBody');
+  body.innerHTML = '<tr><td colspan="2">Đang tải...</td></tr>';
+  try{
+    const list = await api('GET', '/api/admin/snapshots');
+    if(!list.length){ body.innerHTML = '<tr><td colspan="2">Chưa có snapshot nào (sẽ tự xuất hiện sau khi có thay đổi dữ liệu).</td></tr>'; return; }
+    body.innerHTML = '';
+    list.forEach(filename=>{
+      const tr = document.createElement('tr');
+      const tdTime = document.createElement('td');
+      tdTime.textContent = formatSnapshotName(filename);
+      tr.appendChild(tdTime);
+      const tdAction = document.createElement('td');
+      const dlBtn = document.createElement('a');
+      dlBtn.className = 'btn'; dlBtn.textContent = 'Tải xuống'; dlBtn.style.marginRight='6px';
+      dlBtn.href = '/api/admin/snapshots/'+encodeURIComponent(filename);
+      const restoreBtn = document.createElement('button');
+      restoreBtn.className = 'btn'; restoreBtn.textContent = 'Khôi phục';
+      restoreBtn.addEventListener('click', async ()=>{
+        if(!confirm('Khôi phục sẽ THAY THẾ TOÀN BỘ dữ liệu hiện tại bằng đúng bản snapshot lúc '+formatSnapshotName(filename)+'. Bạn chắc chắn chứ?')) return;
+        try{
+          await api('POST', '/api/admin/snapshots/'+encodeURIComponent(filename)+'/restore', {});
+          alert('Đã khôi phục xong. Trang sẽ tự tải lại.');
+          location.reload();
+        }catch(e){ alert('Không khôi phục được: '+e.message); }
+      });
+      tdAction.appendChild(dlBtn); tdAction.appendChild(restoreBtn);
+      tr.appendChild(tdAction);
+      body.appendChild(tr);
+    });
+  }catch(e){
+    body.innerHTML = '<tr><td colspan="2">Không tải được danh sách: '+e.message+'</td></tr>';
+  }
+}
+document.getElementById('btnRefreshSnapshots').addEventListener('click', renderSnapshots);
+
 /* ================= Bang Cong tab ================= */
 function initMonthYearControls(){
   const selMonth = document.getElementById('selMonth');
@@ -978,6 +1029,7 @@ async function bootApp(){
   renderLegendTable();
   renderCalendar();
   renderDangKy();
+  if(currentRole==='admin') renderSnapshots();
 }
 
 (async function init(){

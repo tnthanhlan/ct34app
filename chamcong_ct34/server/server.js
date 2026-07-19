@@ -22,7 +22,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const cron = require('node-cron');
 
-const { getDb, persist } = require('./db');
+const { getDb, persist, listSnapshots, readSnapshot } = require('./db');
 const {
   hashPassword, verifyPassword, issueToken, setSessionCookie, clearSessionCookie,
   requireAuth, requireAdmin
@@ -304,6 +304,29 @@ app.get('/api/admin/backup', requireAuth, requireAdmin, (req, res) => {
   res.send(JSON.stringify(db.state, null, 2));
 });
 
+/* ---------------- Snapshot tu dong (server tu luu dinh ky, khong can bam gi) ---------------- */
+app.get('/api/admin/snapshots', requireAuth, requireAdmin, (req, res) => {
+  res.json(listSnapshots());
+});
+
+app.get('/api/admin/snapshots/:filename', requireAuth, requireAdmin, (req, res) => {
+  const data = readSnapshot(req.params.filename);
+  if (!data) return res.status(404).json({ error: 'Không tìm thấy snapshot này.' });
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${req.params.filename}"`);
+  res.send(JSON.stringify(data.state || data, null, 2));
+});
+
+app.post('/api/admin/snapshots/:filename/restore', requireAuth, requireAdmin, (req, res) => {
+  const data = readSnapshot(req.params.filename);
+  if (!data) return res.status(404).json({ error: 'Không tìm thấy snapshot này.' });
+  if (!data.state) return res.status(400).json({ error: 'Snapshot không hợp lệ.' });
+  const db = getDb();
+  db.state = data.state;
+  persist();
+  res.json({ ok: true });
+});
+
 /* ---------------- Tu dong xuat file hang thang (that su khong can bam nut) ---------------- */
 function ensureExportDir() {
   if (!fs.existsSync(EXPORT_DIR)) fs.mkdirSync(EXPORT_DIR, { recursive: true });
@@ -327,6 +350,26 @@ cron.schedule('50 23 * * *', () => {
   const now = new Date();
   autoExportMonth(now.getFullYear(), now.getMonth());
 });
+
+/* ---------------- Sao luu du lieu ra /share (KHAC HAN /data cua add-on) ----------------
+   Ly do quan trong: neu /data cua rieng add-on nay bi mat (doi o dia, cai lai add-on...),
+   ban sao trong chinh /data (kieu snapshot trong db.js) se mat theo luon, khong bao ve duoc gi.
+   /share la khu vuc chung cua ca he thong Home Assistant, doc lap voi /data cua tung add-on -
+   luu them 1 ban o day de neu chi rieng /data cua CT34 gap su co thi van con duong khoi phuc. */
+function backupStateToShare() {
+  try {
+    ensureExportDir();
+    const db = getDb();
+    const dayName = new Date().toLocaleDateString('en-US', { weekday: 'short' }); // Mon, Tue, ...
+    const fname = `ct34_state_backup_${dayName}.json`;
+    fs.writeFileSync(path.join(EXPORT_DIR, fname), JSON.stringify(db.state, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Không sao lưu được ra /share:', e.message);
+  }
+}
+// Luu 1 lan luc khoi dong, roi cu moi 30 phut luu lai (xoay vong theo ten thu trong tuan, giu toi da 7 ngay)
+backupStateToShare();
+setInterval(backupStateToShare, 30 * 60 * 1000);
 
 /* ---------------- Static frontend ---------------- */
 app.use(express.static(path.join(__dirname, '..', 'public'), {

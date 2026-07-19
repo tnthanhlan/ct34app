@@ -51,6 +51,28 @@ function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const SNAPSHOT_MIN_INTERVAL_MS = 10 * 60 * 1000; // toi da 1 ban snapshot moi 10 phut
+const SNAPSHOT_KEEP = 50; // giu lai 50 ban gan nhat (~vai ngay den vai tuan tuy tan suat sua)
+let lastSnapshotAt = 0;
+
+function writeSnapshotIfDue(dbObj) {
+  const now = Date.now();
+  if (now - lastSnapshotAt < SNAPSHOT_MIN_INTERVAL_MS) return;
+  lastSnapshotAt = now;
+  try {
+    if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    const stamp = new Date(now).toISOString().replace(/[:.]/g, '-');
+    fs.writeFileSync(path.join(BACKUP_DIR, `snapshot_${stamp}.json`), JSON.stringify(dbObj), 'utf8');
+    const files = fs.readdirSync(BACKUP_DIR).filter(f => f.startsWith('snapshot_')).sort();
+    while (files.length > SNAPSHOT_KEEP) {
+      fs.unlinkSync(path.join(BACKUP_DIR, files.shift()));
+    }
+  } catch (e) {
+    console.error('Không tạo được snapshot tự động:', e.message);
+  }
+}
+
 let cache = null;
 
 function load() {
@@ -82,9 +104,21 @@ function save(dbObj) {
   fs.writeFileSync(tmp, JSON.stringify(dbObj, null, 2), 'utf8');
   fs.renameSync(tmp, DB_FILE);
   cache = dbObj;
+  writeSnapshotIfDue(dbObj);
 }
 
 function getDb() { return load(); }
 function persist() { save(cache); }
 
-module.exports = { getDb, persist, defaultState, DATA_DIR };
+function listSnapshots() {
+  if (!fs.existsSync(BACKUP_DIR)) return [];
+  return fs.readdirSync(BACKUP_DIR).filter(f => f.startsWith('snapshot_')).sort().reverse();
+}
+
+function readSnapshot(filename) {
+  const p = path.join(BACKUP_DIR, path.basename(filename));
+  if (!fs.existsSync(p)) return null;
+  return JSON.parse(fs.readFileSync(p, 'utf8'));
+}
+
+module.exports = { getDb, persist, defaultState, DATA_DIR, listSnapshots, readSnapshot };
