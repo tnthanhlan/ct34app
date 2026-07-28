@@ -58,9 +58,6 @@ else
   echo "[baotri_ct34] KET QUA TU KIEM TRA (chu localhost): THAT BAI - day co the la nguyen nhan that su"
 fi
 
-echo "[baotri_ct34] Noi dung /etc/hosts:"
-cat /etc/hosts || true
-
 if [ -n "$CF_TOKEN" ]; then
   echo "[baotri_ct34] Khoi dong Cloudflare Tunnel (chay nen trong container nay)..."
   cloudflared tunnel --protocol http2 run --token "$CF_TOKEN" &

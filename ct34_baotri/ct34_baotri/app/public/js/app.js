@@ -534,6 +534,11 @@ async function openLogForm(log = null, presetEngine = null) {
 
   const html = `
     <div class="modal-title">${log ? 'Sửa lịch sử bảo trì' : 'Ghi nhận bảo trì mới'}</div>
+    ${log ? `<p id="edit-warning" style="font-size:12px; color:var(--amber); background:var(--amber-bg); border-radius:7px; padding:8px 10px; margin-top:-6px;">
+      Bạn đang <b>sửa</b> bản ghi có sẵn này — bấm "Lưu" sẽ ghi đè lên đúng bản ghi này.
+      Nếu muốn thêm 1 việc <b>khác</b> (hạng mục khác, ngày khác...) cho cùng động cơ mà <b>không mất</b> bản ghi hiện tại,
+      hãy sửa nội dung rồi bấm <b>"Lưu thành bản ghi mới"</b> thay vì "Lưu".
+    </p>` : ''}
     <form id="log-form" class="form-grid">
       <div class="full"><label>Động cơ
         <select name="engine_id" required>${engineOptions}</select>
@@ -556,6 +561,7 @@ async function openLogForm(log = null, presetEngine = null) {
       <div class="modal-actions full">
         ${log ? '<button type="button" class="btn btn-danger" id="delete-log-btn">Xóa</button>' : ''}
         <button type="button" class="btn btn-ghost" id="cancel-log-btn">Hủy</button>
+        ${log ? '<button type="button" class="btn btn-primary" id="save-as-new-btn">Lưu thành bản ghi mới</button>' : ''}
         <button type="submit" class="btn btn-primary">Lưu</button>
       </div>
     </form>
@@ -572,6 +578,18 @@ async function openLogForm(log = null, presetEngine = null) {
       try {
         await api('/maintenance/' + log.id, { method: 'DELETE' });
         closeModal(); toast('Đã xóa'); navigate(state.view);
+      } catch (err) { toast(err.message); }
+    });
+
+    // "Lưu thành bản ghi mới": tạo 1 dòng lịch sử MỚI với nội dung trên form hiện tại,
+    // KHÔNG đụng đến bản ghi gốc (log.id) đang có sẵn — dùng khi muốn ghi thêm 1 việc khác
+    // (hạng mục/ngày/nội dung khác) cho cùng động cơ mà không làm mất dữ liệu cũ.
+    document.getElementById('save-as-new-btn').addEventListener('click', async () => {
+      const form = document.getElementById('log-form');
+      const body = Object.fromEntries(new FormData(form).entries());
+      try {
+        await api('/maintenance', { method: 'POST', body: JSON.stringify(body) });
+        closeModal(); toast('Đã lưu thành bản ghi mới, bản ghi cũ vẫn giữ nguyên'); navigate(state.view);
       } catch (err) { toast(err.message); }
     });
   }

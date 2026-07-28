@@ -28,13 +28,13 @@ async function runWeeklyExport() {
     wsEngines.addRow({ ma_thiet_bi: e.ma_thiet_bi, ...data });
   });
 
-  // Sheet 2: Lịch sử sửa chữa / bảo dưỡng
+  // Sheet 2: Lịch sử vệ sinh / bảo dưỡng / bảo trì
   const wsTasks = wb.addWorksheet('Lich su bao tri');
   wsTasks.columns = [
-    { header: 'Ngày thực hiện', key: 'ngay_thuc_hien', width: 16 },
     { header: 'Mã thiết bị', key: 'ma_thiet_bi', width: 16 },
     { header: 'Tên gọi', key: 'ten_goi', width: 26 },
-    { header: 'Hạng mục', key: 'hang_muc', width: 22 },
+    { header: 'Hạng mục', key: 'hang_muc', width: 30 },
+    { header: 'Ngày thực hiện', key: 'ngay_thuc_hien', width: 16 },
     { header: 'Người thực hiện', key: 'nguoi_thuc_hien', width: 18 },
     { header: 'Nội dung', key: 'noi_dung', width: 40 },
   ];
@@ -43,15 +43,15 @@ async function runWeeklyExport() {
   const logs = db.prepare(`
     SELECT t.*, e.ma_thiet_bi, e.data_json AS engine_data_json FROM maintenance_logs t
     JOIN engines e ON e.id = t.engine_id
-    ORDER BY t.ngay_thuc_hien DESC, t.id DESC
+    ORDER BY t.ngay_thuc_hien DESC
   `).all();
 
   logs.forEach(t => {
     wsTasks.addRow({
-      ngay_thuc_hien: t.ngay_thuc_hien,
       ma_thiet_bi: t.ma_thiet_bi,
       ten_goi: displayLabel(t.engine_data_json),
       hang_muc: t.hang_muc,
+      ngay_thuc_hien: t.ngay_thuc_hien,
       nguoi_thuc_hien: t.nguoi_thuc_hien,
       noi_dung: t.noi_dung,
     });

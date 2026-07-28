@@ -63,8 +63,8 @@ function cellNumber(value) {
   return null;
 }
 
-// Chuẩn hóa ngày tháng dạng chữ (dd/m/yyyy, d-m-yyyy...) về yyyy-mm-dd để sắp xếp/so sánh đúng.
-// Nếu không nhận diện được định dạng, giữ nguyên chuỗi gốc.
+// Chuẩn hóa ngày tháng dạng chữ (dd/m/yyyy, d-m-yyyy, hoặc năm 2 chữ số) về yyyy-mm-dd
+// để sắp xếp/so sánh đúng. Nếu không nhận diện được định dạng, giữ nguyên chuỗi gốc.
 function normalizeDateText(text) {
   if (!text) return text;
   const t = String(text).trim();

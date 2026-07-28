@@ -49,7 +49,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Loi server: ' + (err && err.message ? err.message : String(err)) });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, () => {
   console.log(`[baotri_ct34] Server dang chay tai port ${PORT}`);
   startCron();
 });

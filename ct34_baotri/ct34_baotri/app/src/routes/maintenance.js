@@ -85,7 +85,7 @@ router.put('/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-router.delete('/:id', requireAdmin, (req, res) => {
+router.delete('/:id', (req, res) => {
   const info = db.prepare('DELETE FROM maintenance_logs WHERE id = ?').run(req.params.id);
   if (info.changes === 0) return res.status(404).json({ error: 'Không tìm thấy bản ghi' });
   res.json({ ok: true });
