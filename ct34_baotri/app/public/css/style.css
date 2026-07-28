@@ -202,6 +202,17 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .form-grid .full { grid-column: 1 / -1; }
 .form-grid label { font-size: 12.5px; font-weight: 600; color: var(--ink-dim); display: block; }
+
+.combo-results {
+  position: absolute; left: 0; right: 0; top: 100%; z-index: 30;
+  background: var(--surface); border: 1.5px solid var(--border); border-radius: 8px;
+  margin-top: 4px; max-height: 220px; overflow-y: auto;
+  box-shadow: 0 8px 20px rgba(15,20,24,.12);
+}
+.combo-result-item { padding: 9px 12px; font-size: 13.5px; cursor: pointer; border-bottom: 1px solid var(--border); }
+.combo-result-item:last-child { border-bottom: none; }
+.combo-result-item:hover { background: var(--surface-2); }
+.combo-empty { padding: 10px 12px; font-size: 13px; color: var(--ink-dim); }
 .form-grid input, .form-grid select, .form-grid textarea {
   width: 100%; margin-top: 4px; padding: 9px 10px; border: 1.5px solid var(--border); border-radius: 7px; background: var(--surface-2);
 }

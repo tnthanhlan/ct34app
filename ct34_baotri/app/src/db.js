@@ -58,9 +58,27 @@ CREATE TABLE IF NOT EXISTS maintenance_categories (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS materials (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE NOT NULL,
+  unit TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS maintenance_log_materials (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  log_id INTEGER NOT NULL REFERENCES maintenance_logs(id) ON DELETE CASCADE,
+  material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+  quantity REAL NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_logs_engine ON maintenance_logs(engine_id);
 CREATE INDEX IF NOT EXISTS idx_logs_date ON maintenance_logs(ngay_thuc_hien);
 CREATE INDEX IF NOT EXISTS idx_logs_hangmuc ON maintenance_logs(hang_muc);
+CREATE INDEX IF NOT EXISTS idx_logmat_log ON maintenance_log_materials(log_id);
+CREATE INDEX IF NOT EXISTS idx_logmat_material ON maintenance_log_materials(material_id);
 `);
 
 // Gieo sẵn danh sách trường mặc định (khớp cấu trúc file Motors_CT32-34) nếu đây là lần chạy đầu tiên,

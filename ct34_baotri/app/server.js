@@ -10,6 +10,7 @@ const engineRoutes = require('./src/routes/engines');
 const engineFieldRoutes = require('./src/routes/engineFields');
 const maintenanceRoutes = require('./src/routes/maintenance');
 const maintenanceCategoryRoutes = require('./src/routes/maintenanceCategories');
+const materialRoutes = require('./src/routes/materials');
 const importExportRoutes = require('./src/routes/importExport');
 
 seedUsers();
@@ -32,6 +33,7 @@ app.use('/api/engines', engineRoutes);
 app.use('/api/engine-fields', engineFieldRoutes);
 app.use('/api/maintenance', maintenanceRoutes);
 app.use('/api/maintenance-categories', maintenanceCategoryRoutes);
+app.use('/api/materials', materialRoutes);
 app.use('/api/data', importExportRoutes);
 
 app.get('/api/session-check', requireAuth, (req, res) => res.json({ ok: true, user: req.session.user }));

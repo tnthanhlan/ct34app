@@ -37,9 +37,24 @@ router.get('/', (req, res) => {
     ORDER BY t.ngay_thuc_hien DESC, t.id DESC
   `).all(...params);
 
+  const materialsByLog = new Map();
+  if (rows.length) {
+    const ids = rows.map(r => r.id);
+    const placeholders = ids.map(() => '?').join(',');
+    const matRows = db.prepare(`
+      SELECT lm.log_id, lm.material_id, lm.quantity, m.name, m.unit
+      FROM maintenance_log_materials lm JOIN materials m ON m.id = lm.material_id
+      WHERE lm.log_id IN (${placeholders})
+    `).all(...ids);
+    matRows.forEach(m => {
+      if (!materialsByLog.has(m.log_id)) materialsByLog.set(m.log_id, []);
+      materialsByLog.get(m.log_id).push({ material_id: m.material_id, name: m.name, unit: m.unit, quantity: m.quantity });
+    });
+  }
+
   const items = rows.map(r => {
     const { engine_data_json, ...rest } = r;
-    return { ...rest, ten_goi: displayLabel(engine_data_json) };
+    return { ...rest, ten_goi: displayLabel(engine_data_json), materials: materialsByLog.get(r.id) || [] };
   });
   res.json({ items });
 });
@@ -61,27 +76,46 @@ router.get('/:id', (req, res) => {
   `).get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Không tìm thấy bản ghi' });
   const { engine_data_json, ...rest } = row;
-  res.json({ ...rest, ten_goi: displayLabel(engine_data_json) });
+  const materials = db.prepare(`
+    SELECT lm.material_id, lm.quantity, m.name, m.unit
+    FROM maintenance_log_materials lm JOIN materials m ON m.id = lm.material_id
+    WHERE lm.log_id = ?
+  `).all(req.params.id);
+  res.json({ ...rest, ten_goi: displayLabel(engine_data_json), materials });
 });
 
+// Ghi (thay thế toàn bộ) danh sách vật tư đã dùng cho 1 bản ghi lịch sử
+function saveMaterialsForLog(logId, materials) {
+  db.prepare('DELETE FROM maintenance_log_materials WHERE log_id = ?').run(logId);
+  if (!Array.isArray(materials) || !materials.length) return;
+  const insert = db.prepare('INSERT INTO maintenance_log_materials (log_id, material_id, quantity) VALUES (?, ?, ?)');
+  materials.forEach(m => {
+    const materialId = m && m.material_id;
+    const qty = m && Number(m.quantity);
+    if (materialId && qty > 0) insert.run(logId, materialId, qty);
+  });
+}
+
 router.post('/', (req, res) => {
-  const { engine_id, ngay_thuc_hien, hang_muc, nguoi_thuc_hien, noi_dung } = req.body;
+  const { engine_id, ngay_thuc_hien, hang_muc, nguoi_thuc_hien, noi_dung, materials } = req.body;
   if (!engine_id) return res.status(400).json({ error: 'Thiếu engine_id' });
   const info = db.prepare(`
     INSERT INTO maintenance_logs (engine_id, ngay_thuc_hien, hang_muc, nguoi_thuc_hien, noi_dung)
     VALUES (?, ?, ?, ?, ?)
   `).run(engine_id, ngay_thuc_hien || null, (hang_muc || '').trim().normalize('NFC') || null, nguoi_thuc_hien || null, noi_dung || null);
+  saveMaterialsForLog(info.lastInsertRowid, materials);
   res.status(201).json({ id: info.lastInsertRowid });
 });
 
 router.put('/:id', (req, res) => {
-  const { ngay_thuc_hien, hang_muc, nguoi_thuc_hien, noi_dung } = req.body;
+  const { ngay_thuc_hien, hang_muc, nguoi_thuc_hien, noi_dung, materials } = req.body;
   const info = db.prepare(`
     UPDATE maintenance_logs SET
       ngay_thuc_hien = ?, hang_muc = ?, nguoi_thuc_hien = ?, noi_dung = ?, updated_at = datetime('now')
     WHERE id = ?
   `).run(ngay_thuc_hien || null, (hang_muc || '').trim().normalize('NFC') || null, nguoi_thuc_hien || null, noi_dung || null, req.params.id);
   if (info.changes === 0) return res.status(404).json({ error: 'Không tìm thấy bản ghi' });
+  if (materials !== undefined) saveMaterialsForLog(req.params.id, materials);
   res.json({ ok: true });
 });
 

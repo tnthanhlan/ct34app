@@ -1,4 +1,4 @@
-const state = { user: null, view: 'dashboard', engines: [], engineMap: {}, engineFields: [], logMap: {}, maintenanceCategories: [] };
+const state = { user: null, view: 'dashboard', engines: [], engineMap: {}, engineFields: [], logMap: {}, maintenanceCategories: [], materials: [] };
 
 // ---------- API helper ----------
 async function api(path, opts = {}) {
@@ -80,6 +80,7 @@ function navigate(view) {
   if (view === 'dashboard') renderDashboard();
   else if (view === 'engines') renderEngines();
   else if (view === 'maintenance') renderMaintenance();
+  else if (view === 'materials') renderMaterialsReport();
   else if (view === 'data') renderData();
 }
 
@@ -366,7 +367,7 @@ async function openEngineDetail(id) {
 }
 
 // ---------- Maintenance (lịch sử bảo trì) ----------
-let maintFilter = { hang_muc: '', q: '' };
+let maintFilter = { hang_muc: '', q: '', from: '', to: '' };
 
 async function loadMaintenanceCategories(force = false) {
   if (!force && state.maintenanceCategories.length) return state.maintenanceCategories;
@@ -448,12 +449,99 @@ function openCategoryManager(onDone) {
   });
 }
 
+async function loadMaterials(force = false) {
+  if (!force && state.materials.length) return state.materials;
+  const { items } = await api('/materials');
+  state.materials = items;
+  return items;
+}
+
+function openMaterialManager(onDone) {
+  const mats = state.materials;
+  const html = `
+    <div class="modal-title">Quản lý vật tư</div>
+    <p style="font-size:12.5px; color:var(--ink-dim); margin-top:-6px;">
+      Danh sách vật tư/linh kiện dùng khi ghi nhận bảo trì — để hệ thống tự cộng dồn số lượng đã dùng
+      theo từng năm, phục vụ lên kế hoạch mua sắm.
+    </p>
+    <div id="material-manager-list" style="max-height:38vh; overflow-y:auto; margin:10px 0;">
+      ${mats.length ? mats.map((m, i) => `
+        <div class="list-item" data-id="${m.id}">
+          <div class="list-item-main">
+            <div class="list-item-title">${escapeHtml(m.name)}</div>
+            <div class="list-item-sub">${escapeHtml(m.unit || 'chưa có đơn vị')}</div>
+          </div>
+          <div style="display:flex; gap:4px; flex-shrink:0;">
+            <button type="button" class="btn btn-ghost btn-sm" data-act="up" ${i === 0 ? 'disabled' : ''}>↑</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-act="down" ${i === mats.length - 1 ? 'disabled' : ''}>↓</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-act="rename">Sửa</button>
+            <button type="button" class="btn btn-danger btn-sm" data-act="del">Xóa</button>
+          </div>
+        </div>
+      `).join('') : '<div class="empty-state">Chưa có vật tư nào</div>'}
+    </div>
+    <div style="display:flex; gap:8px;">
+      <input type="text" id="new-material-name" placeholder="Tên vật tư mới (vd: Aptomat MCB 20A)..." style="flex:2; padding:9px 10px; border:1.5px solid var(--border); border-radius:7px;">
+      <input type="text" id="new-material-unit" placeholder="Đơn vị (cái, bộ, mét...)" style="flex:1; padding:9px 10px; border:1.5px solid var(--border); border-radius:7px;">
+      <button type="button" class="btn btn-primary" id="add-material-btn">+ Thêm</button>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary btn-block" id="done-material-manager-btn">Xong</button>
+    </div>
+  `;
+  openModal(html);
+
+  document.getElementById('done-material-manager-btn').addEventListener('click', () => { closeModal(); if (onDone) onDone(); });
+
+  document.getElementById('add-material-btn').addEventListener('click', async () => {
+    const nameInput = document.getElementById('new-material-name');
+    const unitInput = document.getElementById('new-material-unit');
+    const name = nameInput.value.trim();
+    if (!name) return;
+    try {
+      await api('/materials', { method: 'POST', body: JSON.stringify({ name, unit: unitInput.value.trim() }) });
+      await loadMaterials(true);
+      closeModal(); openMaterialManager(onDone);
+    } catch (err) { toast(err.message); }
+  });
+
+  document.querySelectorAll('#material-manager-list .list-item').forEach(row => {
+    const id = Number(row.dataset.id);
+    row.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const act = btn.dataset.act;
+        const idx = state.materials.findIndex(m => m.id === id);
+        try {
+          if (act === 'up' || act === 'down') {
+            const arr = [...state.materials];
+            const swapIdx = act === 'up' ? idx - 1 : idx + 1;
+            [arr[idx], arr[swapIdx]] = [arr[swapIdx], arr[idx]];
+            await api('/materials/reorder', { method: 'POST', body: JSON.stringify({ orderedIds: arr.map(m => m.id) }) });
+          } else if (act === 'rename') {
+            const cur = state.materials[idx];
+            const newName = prompt('Đổi tên vật tư:', cur.name);
+            if (!newName || !newName.trim()) return;
+            const newUnit = prompt('Đơn vị tính:', cur.unit || '');
+            await api('/materials/' + id, { method: 'PUT', body: JSON.stringify({ name: newName.trim(), unit: (newUnit || '').trim() }) });
+          } else if (act === 'del') {
+            if (!confirm('Xóa vật tư này? Các bản ghi lịch sử đã dùng vật tư này vẫn giữ nguyên số liệu, chỉ không còn chọn được trong danh sách nữa.')) return;
+            await api('/materials/' + id, { method: 'DELETE' });
+          }
+          await loadMaterials(true);
+          closeModal(); openMaterialManager(onDone);
+        } catch (err) { toast(err.message); }
+      });
+    });
+  });
+}
+
 function logListItemHtml(l) {
+  const matCount = (l.materials || []).length;
   return `
     <div class="list-item" data-id="${l.id}">
       <div class="list-item-main">
         <div class="list-item-title"><span class="engine-code">${escapeHtml(l.ma_thiet_bi || '')}</span> ${escapeHtml(l.ten_goi || '')}</div>
-        <div class="list-item-sub">${escapeHtml(l.hang_muc || 'Chưa rõ hạng mục')} · ${escapeHtml(l.ngay_thuc_hien || '—')} ${l.nguoi_thuc_hien ? '· ' + escapeHtml(l.nguoi_thuc_hien) : ''}</div>
+        <div class="list-item-sub">${escapeHtml(l.hang_muc || 'Chưa rõ hạng mục')} · ${escapeHtml(l.ngay_thuc_hien || '—')} ${l.nguoi_thuc_hien ? '· ' + escapeHtml(l.nguoi_thuc_hien) : ''}${matCount ? ' · 🔧 ' + matCount + ' vật tư' : ''}</div>
       </div>
     </div>
   `;
@@ -468,6 +556,15 @@ async function renderMaintenance() {
   root.innerHTML = `
     <div class="search-row">
       <input type="text" id="log-search" placeholder="Tìm mã thiết bị, nội dung..." value="${escapeHtml(maintFilter.q)}">
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+      <label style="font-size:12.5px; color:var(--ink-dim);">Từ ngày
+        <input type="date" id="log-from" value="${escapeAttr(maintFilter.from)}" style="display:block; margin-top:4px; padding:7px 9px; border:1.5px solid var(--border); border-radius:7px;">
+      </label>
+      <label style="font-size:12.5px; color:var(--ink-dim);">Đến ngày
+        <input type="date" id="log-to" value="${escapeAttr(maintFilter.to)}" style="display:block; margin-top:4px; padding:7px 9px; border:1.5px solid var(--border); border-radius:7px;">
+      </label>
+      ${(maintFilter.from || maintFilter.to) ? '<button type="button" class="btn btn-ghost btn-sm" id="clear-date-btn" style="align-self:flex-end;">Bỏ lọc ngày</button>' : ''}
     </div>
     <div class="filter-chips" id="hangmuc-chips">
       ${chip('', 'Tất cả hạng mục')}
@@ -487,6 +584,11 @@ async function renderMaintenance() {
     renderMaintenanceListOnly();
   }, 350));
 
+  document.getElementById('log-from').addEventListener('change', (e) => { maintFilter.from = e.target.value; renderMaintenanceListOnly(); });
+  document.getElementById('log-to').addEventListener('change', (e) => { maintFilter.to = e.target.value; renderMaintenanceListOnly(); });
+  const clearDateBtn = document.getElementById('clear-date-btn');
+  if (clearDateBtn) clearDateBtn.addEventListener('click', () => { maintFilter.from = ''; maintFilter.to = ''; renderMaintenance(); });
+
   root.querySelectorAll('#hangmuc-chips .chip').forEach(c => c.addEventListener('click', () => {
     maintFilter.hang_muc = c.dataset.val;
     renderMaintenance();
@@ -501,6 +603,8 @@ async function renderMaintenanceListOnly() {
   const params = new URLSearchParams();
   if (maintFilter.hang_muc) params.set('hang_muc', maintFilter.hang_muc);
   if (maintFilter.q) params.set('q', maintFilter.q);
+  if (maintFilter.from) params.set('from', maintFilter.from);
+  if (maintFilter.to) params.set('to', maintFilter.to);
   const { items } = await api('/maintenance?' + params.toString());
   items.forEach(l => { state.logMap[l.id] = l; });
 
@@ -517,12 +621,15 @@ async function openLogForm(log = null, presetEngine = null) {
     state.engines = items;
   }
   await loadMaintenanceCategories();
+  await loadMaterials();
 
-  const engineOptions = state.engines.map(e => {
+  const engineLabel = (e) => {
     const { title } = engineTitleAndSub(e);
-    const selected = (log && log.engine_id === e.id) || (presetEngine && presetEngine.id === e.id);
-    return `<option value="${e.id}" ${selected ? 'selected' : ''}>${escapeHtml(e.ma_thiet_bi)}${title ? ' - ' + escapeHtml(title) : ''}</option>`;
-  }).join('');
+    return e.ma_thiet_bi + (title ? ' - ' + title : '');
+  };
+  const preselectedEngine = log
+    ? state.engines.find(e => e.id === log.engine_id)
+    : (presetEngine ? state.engines.find(e => e.id === presetEngine.id) : null);
 
   const currentHangMuc = log ? (log.hang_muc || '') : '';
   const hasCurrentInList = state.maintenanceCategories.some(c => c.name === currentHangMuc);
@@ -532,6 +639,11 @@ async function openLogForm(log = null, presetEngine = null) {
 
   const today = new Date().toISOString().slice(0, 10);
 
+  // Danh sách vật tư đã dùng cho bản ghi này: mảng {material_id, quantity}, sửa được tự do (thêm/bớt dòng)
+  let materialRows = log && Array.isArray(log.materials)
+    ? log.materials.map(m => ({ material_id: m.material_id, quantity: m.quantity }))
+    : [];
+
   const html = `
     <div class="modal-title">${log ? 'Sửa lịch sử bảo trì' : 'Ghi nhận bảo trì mới'}</div>
     ${log ? `<p id="edit-warning" style="font-size:12px; color:var(--amber); background:var(--amber-bg); border-radius:7px; padding:8px 10px; margin-top:-6px;">
@@ -540,9 +652,14 @@ async function openLogForm(log = null, presetEngine = null) {
       hãy sửa nội dung rồi bấm <b>"Lưu thành bản ghi mới"</b> thay vì "Lưu".
     </p>` : ''}
     <form id="log-form" class="form-grid">
-      <div class="full"><label>Động cơ
-        <select name="engine_id" required>${engineOptions}</select>
-      </label></div>
+      <div class="full" style="position:relative;">
+        <label>Động cơ
+          <input type="text" id="engine-combo-input" autocomplete="off" placeholder="Gõ mã hoặc tên thiết bị để tìm..."
+            value="${preselectedEngine ? escapeAttr(engineLabel(preselectedEngine)) : ''}">
+        </label>
+        <input type="hidden" name="engine_id" id="engine-combo-value" value="${preselectedEngine ? preselectedEngine.id : ''}">
+        <div id="engine-combo-results" class="combo-results" style="display:none;"></div>
+      </div>
       <div class="full">
         <label>Hạng mục / loại công việc
           <select name="hang_muc">${categoryOptions}</select>
@@ -558,6 +675,14 @@ async function openLogForm(log = null, presetEngine = null) {
       <div class="full"><label>Nội dung / ghi chú
         <textarea name="noi_dung" rows="3">${escapeHtml(log ? (log.noi_dung || '') : '')}</textarea>
       </label></div>
+      <div class="full">
+        <label>Vật tư đã dùng (không bắt buộc)</label>
+        <div id="material-rows"></div>
+        <div style="display:flex; gap:6px; margin-top:6px;">
+          <button type="button" class="btn btn-ghost btn-sm" id="add-material-row-btn">+ Thêm vật tư</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="manage-materials-inline-btn">⚙ Quản lý vật tư</button>
+        </div>
+      </div>
       <div class="modal-actions full">
         ${log ? '<button type="button" class="btn btn-danger" id="delete-log-btn">Xóa</button>' : ''}
         <button type="button" class="btn btn-ghost" id="cancel-log-btn">Hủy</button>
@@ -568,6 +693,79 @@ async function openLogForm(log = null, presetEngine = null) {
   `;
   openModal(html);
   document.getElementById('cancel-log-btn').addEventListener('click', closeModal);
+
+  // Danh sách dòng vật tư: vẽ lại mỗi khi thêm/bớt/đổi dòng
+  function renderMaterialRows() {
+    const wrap = document.getElementById('material-rows');
+    if (!materialRows.length) {
+      wrap.innerHTML = `<p style="font-size:12.5px; color:var(--ink-dim); margin:4px 0;">Chưa có vật tư nào — bấm "+ Thêm vật tư" nếu lần này có thay/dùng vật tư.</p>`;
+      return;
+    }
+    wrap.innerHTML = materialRows.map((row, i) => `
+      <div class="material-row" data-idx="${i}" style="display:flex; gap:6px; margin-bottom:6px; align-items:center;">
+        <select data-idx="${i}" class="material-select" style="flex:2; padding:8px 9px; border:1.5px solid var(--border); border-radius:7px;">
+          <option value="">— Chọn vật tư —</option>
+          ${state.materials.map(m => `<option value="${m.id}" ${String(m.id) === String(row.material_id) ? 'selected' : ''}>${escapeHtml(m.name)}${m.unit ? ' (' + escapeHtml(m.unit) + ')' : ''}</option>`).join('')}
+        </select>
+        <input type="number" data-idx="${i}" class="material-qty" min="0" step="any" value="${row.quantity || ''}" placeholder="SL"
+          style="flex:0 0 70px; padding:8px 9px; border:1.5px solid var(--border); border-radius:7px;">
+        <button type="button" class="btn btn-danger btn-sm material-remove" data-idx="${i}">✕</button>
+      </div>
+    `).join('');
+
+    wrap.querySelectorAll('.material-select').forEach(sel => {
+      sel.addEventListener('change', () => { materialRows[Number(sel.dataset.idx)].material_id = sel.value; });
+    });
+    wrap.querySelectorAll('.material-qty').forEach(inp => {
+      inp.addEventListener('input', () => { materialRows[Number(inp.dataset.idx)].quantity = inp.value; });
+    });
+    wrap.querySelectorAll('.material-remove').forEach(btn => {
+      btn.addEventListener('click', () => { materialRows.splice(Number(btn.dataset.idx), 1); renderMaterialRows(); });
+    });
+  }
+  renderMaterialRows();
+
+  document.getElementById('add-material-row-btn').addEventListener('click', () => {
+    materialRows.push({ material_id: '', quantity: 1 });
+    renderMaterialRows();
+  });
+  document.getElementById('manage-materials-inline-btn').addEventListener('click', () => {
+    closeModal();
+    openMaterialManager(() => openLogForm(log, presetEngine));
+  });
+
+  // Combobox động cơ: gõ để lọc dần theo mã hoặc tên, click kết quả để chọn
+  const comboInput = document.getElementById('engine-combo-input');
+  const comboValue = document.getElementById('engine-combo-value');
+  const comboResults = document.getElementById('engine-combo-results');
+
+  function renderComboResults(query) {
+    const q = query.trim().toLowerCase();
+    const matches = !q ? state.engines.slice(0, 30) : state.engines.filter(e => {
+      const { title } = engineTitleAndSub(e);
+      return (e.ma_thiet_bi || '').toLowerCase().includes(q) || (title || '').toLowerCase().includes(q);
+    }).slice(0, 30);
+
+    comboResults.innerHTML = matches.length
+      ? matches.map(e => `<div class="combo-result-item" data-id="${e.id}">${escapeHtml(engineLabel(e))}</div>`).join('')
+      : `<div class="combo-empty">Không tìm thấy thiết bị nào</div>`;
+    comboResults.style.display = 'block';
+
+    comboResults.querySelectorAll('.combo-result-item').forEach(item => {
+      item.addEventListener('mousedown', (ev) => {
+        ev.preventDefault(); // giu focus tren input, tranh blur chay truoc khi chon xong
+        const eng = state.engines.find(x => String(x.id) === item.dataset.id);
+        comboInput.value = engineLabel(eng);
+        comboValue.value = eng.id;
+        comboResults.style.display = 'none';
+      });
+    });
+  }
+
+  comboInput.addEventListener('focus', () => renderComboResults(comboInput.value));
+  comboInput.addEventListener('input', () => { comboValue.value = ''; renderComboResults(comboInput.value); });
+  comboInput.addEventListener('blur', () => { setTimeout(() => { comboResults.style.display = 'none'; }, 150); });
+
   document.getElementById('manage-categories-inline-btn').addEventListener('click', () => {
     closeModal();
     openCategoryManager(() => openLogForm(log, presetEngine));
@@ -585,8 +783,10 @@ async function openLogForm(log = null, presetEngine = null) {
     // KHÔNG đụng đến bản ghi gốc (log.id) đang có sẵn — dùng khi muốn ghi thêm 1 việc khác
     // (hạng mục/ngày/nội dung khác) cho cùng động cơ mà không làm mất dữ liệu cũ.
     document.getElementById('save-as-new-btn').addEventListener('click', async () => {
+      if (!comboValue.value) { toast('Vui lòng chọn 1 động cơ từ danh sách gợi ý'); comboInput.focus(); return; }
       const form = document.getElementById('log-form');
       const body = Object.fromEntries(new FormData(form).entries());
+      body.materials = materialRows.filter(r => r.material_id && Number(r.quantity) > 0);
       try {
         await api('/maintenance', { method: 'POST', body: JSON.stringify(body) });
         closeModal(); toast('Đã lưu thành bản ghi mới, bản ghi cũ vẫn giữ nguyên'); navigate(state.view);
@@ -595,7 +795,9 @@ async function openLogForm(log = null, presetEngine = null) {
   }
   document.getElementById('log-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!comboValue.value) { toast('Vui lòng chọn 1 động cơ từ danh sách gợi ý'); comboInput.focus(); return; }
     const body = Object.fromEntries(new FormData(e.target).entries());
+    body.materials = materialRows.filter(r => r.material_id && Number(r.quantity) > 0);
     try {
       if (log) await api('/maintenance/' + log.id, { method: 'PUT', body: JSON.stringify(body) });
       else await api('/maintenance', { method: 'POST', body: JSON.stringify(body) });
@@ -604,7 +806,64 @@ async function openLogForm(log = null, presetEngine = null) {
   });
 }
 
-// ---------- Data (import/export) ----------
+// ---------- Vật tư (báo cáo tiêu hao theo năm, phục vụ lên kế hoạch mua sắm) ----------
+async function renderMaterialsReport() {
+  const root = document.getElementById('view-root');
+  if (state.user.role !== 'admin') {
+    root.innerHTML = `<div class="empty-state">Chỉ admin mới xem được mục này</div>`;
+    return;
+  }
+  await loadMaterials(true);
+  const { items: usage } = await api('/materials/usage-report');
+
+  // Gom theo vật tư, cot la nam
+  const years = [...new Set(usage.map(u => u.year))].sort();
+  const byMaterial = new Map();
+  state.materials.forEach(m => byMaterial.set(m.id, { name: m.name, unit: m.unit, byYear: {}, total: 0 }));
+  usage.forEach(u => {
+    if (!byMaterial.has(u.material_id)) byMaterial.set(u.material_id, { name: u.material_name, unit: u.material_unit, byYear: {}, total: 0 });
+    const entry = byMaterial.get(u.material_id);
+    entry.byYear[u.year] = u.total_qty;
+    entry.total += u.total_qty;
+  });
+
+  const rows = [...byMaterial.values()];
+
+  root.innerHTML = `
+    <div class="card">
+      <p style="font-size:13px; color:var(--ink-dim); margin-top:0;">
+        Tổng số lượng từng vật tư đã dùng theo năm (cộng dồn từ các lần ghi nhận bảo trì) — dùng để ước lượng
+        nhu cầu mua sắm cho năm tới.
+      </p>
+      <button class="btn btn-primary btn-block" id="open-material-manager-btn">⚙ Quản lý vật tư (${state.materials.length} loại)</button>
+    </div>
+    <div class="section-title">Tiêu hao theo năm</div>
+    <div class="card" style="overflow-x:auto;">
+      ${rows.length ? `
+        <table style="width:100%; border-collapse:collapse; font-size:13.5px;">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border);">
+              <th style="text-align:left; padding:8px 6px;">Vật tư</th>
+              ${years.map(y => `<th style="text-align:right; padding:8px 6px;">${y}</th>`).join('')}
+              <th style="text-align:right; padding:8px 6px; font-weight:800;">Tổng</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(r => `
+              <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:8px 6px;">${escapeHtml(r.name)}${r.unit ? ` <span style="color:var(--ink-dim); font-size:12px;">(${escapeHtml(r.unit)})</span>` : ''}</td>
+                ${years.map(y => `<td style="text-align:right; padding:8px 6px;">${r.byYear[y] || '—'}</td>`).join('')}
+                <td style="text-align:right; padding:8px 6px; font-weight:700;">${r.total || '—'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      ` : '<div class="empty-state">Chưa có vật tư nào được ghi nhận. Thêm vật tư ở nút phía trên, rồi chọn khi ghi nhận bảo trì.</div>'}
+    </div>
+  `;
+
+  document.getElementById('open-material-manager-btn').addEventListener('click', () => openMaterialManager(() => renderMaterialsReport()));
+}
 async function renderData() {
   const root = document.getElementById('view-root');
   if (state.user.role !== 'admin') {
