@@ -689,11 +689,12 @@ function buildBangCongTotalsRow(nDays){
   nameTd.style.fontWeight = '700';
   tr.appendChild(nameTd);
 
-  let totalLuong = 0;
+  let totalLuong = 0, totalHeso = 0;
   const totals = {AJ:0,AK:0,AL:0,AM:0,AO:0,AP:0,AQ:0,AR:0,AU:0,AV:0,AW:0};
   state.employees.forEach(emp=>{
     const pay = employeePayroll(emp, viewYear, viewMonth);
     totalLuong += pay.tongLuongPhuCap;
+    totalHeso += pay.hesoCDHieuLuc;
     const count = {}; CODE_ORDER.forEach(c=>count[c]=0);
     for(let d=1; d<=nDays; d++){
       const code = computeFinalCode(emp, viewYear, viewMonth, d);
@@ -717,7 +718,11 @@ function buildBangCongTotalsRow(nDays){
   mucLuongTd.style.textAlign = 'right';
   mucLuongTd.style.fontWeight = '700';
   tr.appendChild(mucLuongTd);
-  tr.appendChild(document.createElement('td')); // he so - khong cong don
+  const hesoTd = document.createElement('td');
+  hesoTd.textContent = totalHeso.toFixed(2);
+  hesoTd.style.textAlign = 'center';
+  hesoTd.style.fontWeight = '700';
+  tr.appendChild(hesoTd);
 
   for(let d=1; d<=nDays; d++) tr.appendChild(document.createElement('td'));
 

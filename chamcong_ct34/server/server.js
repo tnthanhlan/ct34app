@@ -143,7 +143,7 @@ async function buildMonthWorkbook(state, y, m) {
   headers.push('Công', 'Ca 3', 'Lễ+phép', 'Du lịch', 'Bù lễ', 'Riêng lg', 'Ốm/TN/TS', 'Ca3 lễ', 'Phép', 'Lễ', 'Bù');
   ws.addRow(headers);
 
-  const totals = { luong: 0, AJ: 0, AK: 0, AL: 0, AM: 0, AO: 0, AP: 0, AQ: 0, AR: 0, AU: 0, AV: 0, AW: 0 };
+  const totals = { luong: 0, heso: 0, AJ: 0, AK: 0, AL: 0, AM: 0, AO: 0, AP: 0, AQ: 0, AR: 0, AU: 0, AV: 0, AW: 0 };
 
   state.employees.forEach(emp => {
     const pay = employeePayroll(state, emp, y, m);
@@ -169,11 +169,12 @@ async function buildMonthWorkbook(state, y, m) {
     ws.addRow(row);
 
     totals.luong += pay.tongLuongPhuCap;
+    totals.heso += pay.hesoCDHieuLuc;
     totals.AJ += AJ; totals.AK += AK; totals.AL += AL; totals.AM += AM; totals.AO += AO;
     totals.AP += AP; totals.AQ += AQ; totals.AR += AR; totals.AU += AU; totals.AV += AV; totals.AW += AW;
   });
 
-  const totalRow = ['Tổng cộng', Math.round(totals.luong), ''];
+  const totalRow = ['Tổng cộng', Math.round(totals.luong), Number(totals.heso.toFixed(2))];
   for (let d = 1; d <= nDays; d++) totalRow.push('');
   totalRow.push(totals.AJ, totals.AK, totals.AL, totals.AM, totals.AO, totals.AP, totals.AQ, totals.AR, totals.AU, totals.AV, totals.AW);
   ws.addRow(totalRow);
