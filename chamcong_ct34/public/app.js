@@ -775,6 +775,9 @@ document.getElementById('btnClear').addEventListener('click', async ()=>{
 document.getElementById('btnExportCSV').addEventListener('click', ()=>{
   window.location.href = `/api/export/excel?year=${viewYear}&month=${viewMonth+1}`;
 });
+document.getElementById('btnExportAnCa').addEventListener('click', ()=>{
+  window.location.href = `/api/export/excel-anca?year=${viewYear}&month=${viewMonth+1}`;
+});
 
 /* ================= Cham cong (dang ky doi ca / nghi phep) tab ================= */
 let regMode = 'phep';

@@ -133,26 +133,121 @@ function employeePayroll(state, emp, y, m) {
   return { mucLuong, phuCap, tongLuongPhuCap: mucLuong + phuCap, hesoCDHieuLuc };
 }
 
+const XLS_BORDER = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+const XLS_WEEKEND_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDF3DC' } };
+const XLS_HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F3F5' } };
+const XLS_F_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE08A' } };
+const XLS_TOTAL_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8EEF2' } };
+const XLS_PHASE_LETTERS = ['S', 'S', '', 'C', 'C', 'Đ', 'Đ', ''];
+const XLS_WEEKDAY_SHORT = ['CN', 'Thai', 'Tba', 'Ttư', 'Tnăm', 'Tsáu', 'Tbảy'];
+
+function xlsFooterDateLine(y, m) {
+  const now = new Date();
+  return `Ngày ${String(now.getDate()).padStart(2, '0')} tháng ${String(now.getMonth() + 1).padStart(2, '0')} năm ${now.getFullYear()}`;
+}
+
+function xlsGroupedOrder(state) {
+  const kipIds = new Set(state.kips.map(k => k.id));
+  const order = [];
+  state.employees.filter(e => !e.kipId || !kipIds.has(e.kipId)).forEach(e => order.push({ type: 'emp', emp: e }));
+  state.kips.forEach((kip, i) => {
+    order.push({ type: 'kip', kip });
+    state.employees.filter(e => e.kipId === kip.id).forEach(e => order.push({ type: 'emp', emp: e }));
+  });
+  return order;
+}
+
+function xlsApplyTitleBlock(ws, totalCols, titleText, subText) {
+  ws.mergeCells(1, 1, 1, totalCols);
+  const t = ws.getCell(1, 1);
+  t.value = titleText;
+  t.font = { name: 'Times New Roman', size: 16, bold: true };
+  t.alignment = { vertical: 'middle', horizontal: 'center' };
+  ws.getRow(1).height = 26;
+
+  ws.mergeCells(2, 1, 2, totalCols);
+  const s = ws.getCell(2, 1);
+  s.value = subText;
+  s.font = { name: 'Times New Roman', size: 12, bold: true };
+  s.alignment = { vertical: 'middle', horizontal: 'center' };
+  ws.getRow(2).height = 20;
+}
+
+function xlsApplyFooter(ws, totalCols, y, m) {
+  const startRow = ws.rowCount + 2;
+  // Dong ngay thang - can phai, chiem nua bang ben phai
+  const half = Math.max(1, Math.floor(totalCols / 2));
+  ws.mergeCells(startRow, half + 1, startRow, totalCols);
+  const dateCell = ws.getCell(startRow, half + 1);
+  dateCell.value = xlsFooterDateLine(y, m);
+  dateCell.font = { name: 'Times New Roman', size: 12, italic: true };
+  dateCell.alignment = { horizontal: 'center' };
+
+  ws.mergeCells(startRow + 1, half + 1, startRow + 1, totalCols);
+  const roleCell = ws.getCell(startRow + 1, half + 1);
+  roleCell.value = 'Người lập';
+  roleCell.font = { name: 'Times New Roman', size: 12, bold: true };
+  roleCell.alignment = { horizontal: 'center' };
+
+  ws.mergeCells(startRow + 4, half + 1, startRow + 4, totalCols);
+  const nameCell = ws.getCell(startRow + 4, half + 1);
+  nameCell.value = 'Trần Nam Thành';
+  nameCell.font = { name: 'Times New Roman', size: 12, bold: true };
+  nameCell.alignment = { horizontal: 'center' };
+}
+
 async function buildMonthWorkbook(state, y, m) {
   const nDays = daysInMonth(y, m);
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet(`Thang ${m + 1}-${y}`);
 
-  const headers = ['Nhân sự', 'Mức lương + Phụ cấp', 'Hệ số lương chức danh'];
-  for (let d = 1; d <= nDays; d++) headers.push(String(d));
-  headers.push('Công', 'Ca 3', 'Lễ+phép', 'Du lịch', 'Bù lễ', 'Riêng lg', 'Ốm/TN/TS', 'Ca3 lễ', 'Phép', 'Lễ', 'Bù');
-  ws.addRow(headers);
+  const sumHeaders = ['Công', 'Ca 3', 'Lễ+phép', 'Du lịch', 'Bù lễ', 'Riêng lg', 'Ốm/TN/TS', 'Ca3 lễ', 'Phép', 'Lễ', 'Bù'];
+  const totalCols = 3 + nDays + sumHeaders.length;
+
+  xlsApplyTitleBlock(ws, totalCols,
+    `BẢNG CHẤM CÔNG THÁNG ${String(m + 1).padStart(2, '0')}/${y}`,
+    'ĐỘI SỬA CHỮA ĐIỆN CT34');
+
+  // 2 dong header: dong thu trong tuan + dong so ngay (giong ban web)
+  const dowRow = ['Nhân sự', 'Mức lương', 'Hệ số lương chức danh'];
+  const dayRow = ['', '', ''];
+  for (let d = 1; d <= nDays; d++) {
+    const dow = new Date(y, m, d).getDay();
+    dowRow.push(XLS_WEEKDAY_SHORT[dow]);
+    dayRow.push(d);
+  }
+  sumHeaders.forEach(h => { dowRow.push(h); dayRow.push(''); });
+  const headerRow1 = ws.addRow(dowRow); // row 3
+  const headerRow2 = ws.addRow(dayRow); // row 4
+  // Merge doc 2 dong cho 3 cot dau va cac cot tong hop
+  for (let c = 1; c <= 3; c++) ws.mergeCells(3, c, 4, c);
+  for (let i = 0; i < sumHeaders.length; i++) ws.mergeCells(3, 3 + nDays + 1 + i, 4, 3 + nDays + 1 + i);
 
   const totals = { luong: 0, heso: 0, AJ: 0, AK: 0, AL: 0, AM: 0, AO: 0, AP: 0, AQ: 0, AR: 0, AU: 0, AV: 0, AW: 0 };
 
-  state.employees.forEach(emp => {
+  xlsGroupedOrder(state).forEach(item => {
+    if (item.type === 'kip') {
+      const row = [item.kip.label, '', ''];
+      for (let d = 1; d <= nDays; d++) {
+        const idx = mod8(daysSinceAnchor(state, y, m, d) + Number(item.kip.offset || 0));
+        row.push(XLS_PHASE_LETTERS[idx] || '·');
+      }
+      sumHeaders.forEach(() => row.push(''));
+      const r = ws.addRow(row);
+      r.eachCell({ includeEmpty: true }, (cell) => {
+        cell.fill = XLS_HEADER_FILL;
+        cell.font = { name: 'Times New Roman', size: 12, bold: true, color: { argb: 'FF2C5F7C' } };
+      });
+      return;
+    }
+    const emp = item.emp;
     const pay = employeePayroll(state, emp, y, m);
     const row = [emp.name, Math.round(pay.tongLuongPhuCap), Number(pay.hesoCDHieuLuc.toFixed(2))];
     const count = {}; CODE_ORDER.forEach(c => count[c] = 0);
     for (let d = 1; d <= nDays; d++) {
       const code = computeFinalCode(state, emp, y, m, d);
       count[code] = (count[code] || 0) + 1;
-      row.push(code || '-');
+      row.push(code || '·');
     }
     const AJ = WORK_CODES.reduce((s, c) => s + count[c], 0);
     const AK = count['XĐ'] + count['KD'];
@@ -166,7 +261,11 @@ async function buildMonthWorkbook(state, y, m) {
     const AV = count['L'];
     const AW = count['B'] + count['BL'];
     row.push(AJ, AK, AL, AM, AO, AP, AQ, AR, AU, AV, AW);
-    ws.addRow(row);
+    const r = ws.addRow(row);
+    // To vang cac o F
+    for (let d = 1; d <= nDays; d++) {
+      if (computeFinalCode(state, emp, y, m, d) === 'F') r.getCell(3 + d).fill = XLS_F_FILL;
+    }
 
     totals.luong += pay.tongLuongPhuCap;
     totals.heso += pay.hesoCDHieuLuc;
@@ -174,32 +273,101 @@ async function buildMonthWorkbook(state, y, m) {
     totals.AP += AP; totals.AQ += AQ; totals.AR += AR; totals.AU += AU; totals.AV += AV; totals.AW += AW;
   });
 
-  const totalRow = ['Tổng cộng', Math.round(totals.luong), Number(totals.heso.toFixed(2))];
-  for (let d = 1; d <= nDays; d++) totalRow.push('');
-  totalRow.push(totals.AJ, totals.AK, totals.AL, totals.AM, totals.AO, totals.AP, totals.AQ, totals.AR, totals.AU, totals.AV, totals.AW);
-  ws.addRow(totalRow);
+  const totalRowArr = ['Tổng cộng', Math.round(totals.luong), Number(totals.heso.toFixed(2))];
+  for (let d = 1; d <= nDays; d++) totalRowArr.push('');
+  totalRowArr.push(totals.AJ, totals.AK, totals.AL, totals.AM, totals.AO, totals.AP, totals.AQ, totals.AR, totals.AU, totals.AV, totals.AW);
+  const totalRowRef = ws.addRow(totalRowArr);
+  totalRowRef.eachCell({ includeEmpty: true }, (cell) => { cell.fill = XLS_TOTAL_FILL; });
 
-  // Dinh dang: Times New Roman 12, ke vien toan bo, khong ghi chu thich gi them - chi Header + du lieu
+  // Dinh dang chung: font, border, alignment, to nen cuoi tuan
   const lastRow = ws.rowCount;
-  const lastCol = headers.length;
-  for (let r = 1; r <= lastRow; r++) {
+  for (let r = 3; r <= lastRow; r++) {
     const row = ws.getRow(r);
-    for (let c = 1; c <= lastCol; c++) {
+    for (let c = 1; c <= totalCols; c++) {
       const cell = row.getCell(c);
-      cell.font = { name: 'Times New Roman', size: 12, bold: (r === 1 || r === lastRow) };
-      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-      cell.alignment = { vertical: 'middle', horizontal: c === 1 ? 'left' : (c <= 3 ? 'right' : 'center') };
+      if (!cell.font) cell.font = { name: 'Times New Roman', size: 12, bold: (r === 3 || r === 4 || r === lastRow) };
+      else cell.font = Object.assign({ name: 'Times New Roman', size: 12 }, cell.font);
+      cell.border = XLS_BORDER;
+      cell.alignment = { vertical: 'middle', horizontal: c === 1 ? 'left' : (c === 2 ? 'right' : 'center') };
+      // To nen cot cuoi tuan truoc (uu tien hon mau header) - giong ban web
+      if (c > 3 && c <= 3 + nDays) {
+        const d = c - 3;
+        const dow = new Date(y, m, d).getDay();
+        if ((dow === 0 || dow === 6) && !cell.fill) cell.fill = XLS_WEEKEND_FILL;
+      }
+      if ((r === 3 || r === 4) && !cell.fill) cell.fill = XLS_HEADER_FILL;
     }
   }
 
-  ws.getColumn(1).width = 24;
-  ws.getColumn(2).width = 16;
-  ws.getColumn(3).width = 12;
-  for (let d = 1; d <= nDays; d++) ws.getColumn(3 + d).width = 5;
-  for (let i = 0; i < 11; i++) ws.getColumn(3 + nDays + 1 + i).width = 10;
+  ws.getColumn(1).width = 22;
+  ws.getColumn(2).width = 13;
+  ws.getColumn(3).width = 10;
+  for (let d = 1; d <= nDays; d++) ws.getColumn(3 + d).width = 4.6;
+  for (let i = 0; i < sumHeaders.length; i++) ws.getColumn(3 + nDays + 1 + i).width = 9;
 
-  ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }];
+  xlsApplyFooter(ws, totalCols, y, m);
+  ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 4 }];
+  ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
+  return wb;
+}
 
+async function buildMealWorkbook(state, y, m) {
+  const nDays = daysInMonth(y, m);
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(`AnCa ${m + 1}-${y}`);
+  const totalCols = 6;
+
+  xlsApplyTitleBlock(ws, totalCols,
+    `BẢNG ĂN CA THÁNG ${String(m + 1).padStart(2, '0')}/${y}`,
+    'ĐỘI SỬA CHỮA ĐIỆN CT34');
+
+  ws.addRow(['TT', 'Họ và tên', 'Số công', 'Số ca 3', 'Số bữa ăn', 'Ghi chú']); // row 3
+
+  let totalCong = 0, totalCa3 = 0, totalBuaAn = 0;
+  state.employees.forEach((emp, idx) => {
+    const count = {}; CODE_ORDER.forEach(c => count[c] = 0);
+    for (let d = 1; d <= nDays; d++) {
+      const code = computeFinalCode(state, emp, y, m, d);
+      count[code] = (count[code] || 0) + 1;
+    }
+    const AJ = WORK_CODES.reduce((s, c) => s + count[c], 0);
+    const ca3Auto = count['KD'] + count['XĐ'] + count['KDL'] + count['XLĐ'];
+    const mealAuto = Math.max(0, AJ - ca3Auto);
+    const key = `${emp.id}_${y}-${String(m + 1).padStart(2, '0')}`;
+    const ov = (state.mealOverrides && state.mealOverrides[key]) || {};
+    const effCong = (ov.soCong === null || ov.soCong === undefined) ? AJ : ov.soCong;
+    const effCa3 = (ov.soCa3 === null || ov.soCa3 === undefined) ? ca3Auto : ov.soCa3;
+    const effBuaAn = (ov.soBuaAn === null || ov.soBuaAn === undefined) ? mealAuto : ov.soBuaAn;
+    totalCong += Number(effCong) || 0;
+    totalCa3 += Number(effCa3) || 0;
+    totalBuaAn += Number(effBuaAn) || 0;
+    ws.addRow([idx + 1, emp.name, effCong, effCa3, effBuaAn, ov.ghiChu || '']);
+  });
+
+  const totalRowRef = ws.addRow(['', 'Tổng cộng', totalCong, totalCa3, totalBuaAn, '']);
+  totalRowRef.eachCell({ includeEmpty: true }, (cell) => { cell.fill = XLS_TOTAL_FILL; });
+
+  const lastRow = ws.rowCount;
+  for (let r = 3; r <= lastRow; r++) {
+    const row = ws.getRow(r);
+    for (let c = 1; c <= totalCols; c++) {
+      const cell = row.getCell(c);
+      cell.font = { name: 'Times New Roman', size: 12, bold: (r === 3 || r === lastRow) };
+      cell.border = XLS_BORDER;
+      cell.alignment = { vertical: 'middle', horizontal: c === 2 || c === 6 ? 'left' : 'center' };
+      if (r === 3 && !cell.fill) cell.fill = XLS_HEADER_FILL;
+    }
+  }
+
+  ws.getColumn(1).width = 5;
+  ws.getColumn(2).width = 24;
+  ws.getColumn(3).width = 10;
+  ws.getColumn(4).width = 10;
+  ws.getColumn(5).width = 12;
+  ws.getColumn(6).width = 30;
+
+  xlsApplyFooter(ws, totalCols, y, m);
+  ws.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
   return wb;
 }
 
@@ -345,6 +513,21 @@ app.get('/api/export/excel', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/export/excel-anca', requireAuth, async (req, res) => {
+  const y = Number(req.query.year), m = Number(req.query.month) - 1;
+  if (!y || m < 0 || m > 11) return res.status(400).json({ error: 'Thiếu hoặc sai year/month.' });
+  const db = getDb();
+  try {
+    const wb = await buildMealWorkbook(db.state, y, m);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="AnCa_${y}_${String(m + 1).padStart(2, '0')}.xlsx"`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    res.status(500).json({ error: 'Không tạo được file Excel: ' + e.message });
+  }
+});
+
 /* ---------------- Sao luu toan bo du lieu (tai truc tiep qua trinh duyet, khong can Samba/Filebrowser) ---------------- */
 app.get('/api/admin/backup', requireAuth, requireAdmin, (req, res) => {
   const db = getDb();
@@ -404,7 +587,10 @@ async function autoExportMonth(y, m) {
     const wb = await buildMonthWorkbook(db.state, y, m);
     const fname = `ChamCong_${y}_${String(m + 1).padStart(2, '0')}.xlsx`;
     await wb.xlsx.writeFile(path.join(EXPORT_DIR, fname));
-    console.log(`[auto-export] Đã lưu ${fname} vào ${EXPORT_DIR}`);
+    const wbMeal = await buildMealWorkbook(db.state, y, m);
+    const fnameMeal = `AnCa_${y}_${String(m + 1).padStart(2, '0')}.xlsx`;
+    await wbMeal.xlsx.writeFile(path.join(EXPORT_DIR, fnameMeal));
+    console.log(`[auto-export] Đã lưu ${fname} + ${fnameMeal} vào ${EXPORT_DIR}`);
   } catch (e) {
     console.error('[auto-export] Lỗi khi xuất file:', e.message);
   }
