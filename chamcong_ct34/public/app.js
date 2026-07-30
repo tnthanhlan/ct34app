@@ -454,6 +454,30 @@ async function renderSnapshots(){
 }
 document.getElementById('btnRefreshSnapshots').addEventListener('click', renderSnapshots);
 
+document.getElementById('btnRestoreUpload').addEventListener('click', ()=>{
+  document.getElementById('restoreFileInput').click();
+});
+document.getElementById('restoreFileInput').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  e.target.value = ''; // reset de lan sau chon lai cung 1 file van kich hoat
+  if(!file) return;
+  let payload;
+  try{
+    payload = JSON.parse(await file.text());
+  }catch(err){
+    alert('File không đọc được (không phải JSON hợp lệ): '+err.message);
+    return;
+  }
+  if(!confirm('Khôi phục từ file "'+file.name+'" sẽ THAY THẾ TOÀN BỘ dữ liệu hiện tại trên server bằng nội dung file này. Bạn chắc chắn chứ?')) return;
+  try{
+    await api('POST', '/api/admin/restore-upload', payload);
+    alert('Đã khôi phục xong từ file. Trang sẽ tự tải lại.');
+    location.reload();
+  }catch(err){
+    alert('Không khôi phục được: '+err.message);
+  }
+});
+
 /* ================= Bang Cong tab ================= */
 function initMonthYearControls(){
   const selMonth = document.getElementById('selMonth');

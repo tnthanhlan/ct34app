@@ -377,6 +377,22 @@ app.post('/api/admin/snapshots/:filename/restore', requireAuth, requireAdmin, (r
   res.json({ ok: true });
 });
 
+/* ---------------- Khoi phuc tu file JSON tai len (backup thu cong / file trong /share) ---------------- */
+app.post('/api/admin/restore-upload', requireAuth, requireAdmin, (req, res) => {
+  const payload = req.body;
+  if (!payload || typeof payload !== 'object') return res.status(400).json({ error: 'File không hợp lệ.' });
+  // Chap nhan ca 2 dang: file backup state thuan (co employees/settings o goc)
+  // hoac file snapshot day du (co .state ben trong)
+  let newState = null;
+  if (payload.state && payload.state.employees) newState = payload.state;
+  else if (payload.employees && payload.settings) newState = payload;
+  if (!newState) return res.status(400).json({ error: 'File không đúng định dạng backup CT34 (không tìm thấy dữ liệu nhân sự bên trong).' });
+  const db = getDb();
+  db.state = newState;
+  persist();
+  res.json({ ok: true });
+});
+
 /* ---------------- Tu dong xuat file hang thang (that su khong can bam nut) ---------------- */
 function ensureExportDir() {
   if (!fs.existsSync(EXPORT_DIR)) fs.mkdirSync(EXPORT_DIR, { recursive: true });

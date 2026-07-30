@@ -109,6 +109,8 @@
     Cứ tối đa mỗi 10 phút có thay đổi gì, server tự lưu lại 1 bản chụp toàn bộ dữ liệu, giữ tối đa 50 bản gần nhất. Nếu phát hiện dữ liệu bị thiếu, tìm bản snapshot đúng thời điểm còn đủ dữ liệu bên dưới rồi bấm "Khôi phục".
   </div>
   <button class="btn" id="btnRefreshSnapshots" style="margin-bottom:8px">⟳ Tải lại danh sách</button>
+  <button class="btn" id="btnRestoreUpload" style="margin-bottom:8px">📂 Khôi phục từ file JSON...</button>
+  <input type="file" id="restoreFileInput" accept=".json,application/json" style="display:none">
   <table class="bac-table" id="snapshotTable">
     <thead><tr><th>Thời điểm lưu</th><th></th></tr></thead>
     <tbody id="snapshotBody"></tbody>
