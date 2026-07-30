@@ -21,6 +21,7 @@ const fs = require('fs');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const cron = require('node-cron');
+const ExcelJS = require('exceljs');
 
 const { getDb, persist, listSnapshots, readSnapshot } = require('./db');
 const {
@@ -132,16 +133,21 @@ function employeePayroll(state, emp, y, m) {
   return { mucLuong, phuCap, tongLuongPhuCap: mucLuong + phuCap, hesoCDHieuLuc };
 }
 
-function buildMonthCSV(state, y, m) {
+async function buildMonthWorkbook(state, y, m) {
   const nDays = daysInMonth(y, m);
-  const rows = [];
-  const header = ['Nhân sự', 'Mức lương + Phụ cấp', 'Hệ số lương chức danh'];
-  for (let d = 1; d <= nDays; d++) header.push(String(d));
-  header.push('Công(AJ)', 'Ca3(AK)', 'Lễ+phép(AL)', 'Du lịch(AM)', 'Bù lễ(AO)', 'Riêng lg(AP)', 'Ốm/TN/TS(AQ)', 'Ca3 lễ(AR)', 'Phép(AU)', 'Lễ(AV)', 'Bù(AW)');
-  rows.push(header.join(';'));
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(`Thang ${m + 1}-${y}`);
+
+  const headers = ['Nhân sự', 'Mức lương + Phụ cấp', 'Hệ số lương chức danh'];
+  for (let d = 1; d <= nDays; d++) headers.push(String(d));
+  headers.push('Công', 'Ca 3', 'Lễ+phép', 'Du lịch', 'Bù lễ', 'Riêng lg', 'Ốm/TN/TS', 'Ca3 lễ', 'Phép', 'Lễ', 'Bù');
+  ws.addRow(headers);
+
+  const totals = { luong: 0, AJ: 0, AK: 0, AL: 0, AM: 0, AO: 0, AP: 0, AQ: 0, AR: 0, AU: 0, AV: 0, AW: 0 };
+
   state.employees.forEach(emp => {
     const pay = employeePayroll(state, emp, y, m);
-    const row = [emp.name, Math.round(pay.tongLuongPhuCap), pay.hesoCDHieuLuc.toFixed(2)];
+    const row = [emp.name, Math.round(pay.tongLuongPhuCap), Number(pay.hesoCDHieuLuc.toFixed(2))];
     const count = {}; CODE_ORDER.forEach(c => count[c] = 0);
     for (let d = 1; d <= nDays; d++) {
       const code = computeFinalCode(state, emp, y, m, d);
@@ -149,13 +155,51 @@ function buildMonthCSV(state, y, m) {
       row.push(code || '-');
     }
     const AJ = WORK_CODES.reduce((s, c) => s + count[c], 0);
-    row.push(AJ, count['XĐ'] + count['KD'],
-      count['L'] + count['F'] + count['XL'] + count['XLĐ'] + count['K1L'] + count['K2L'] + count['KDL'],
-      count['DL'], count['XL'] + count['XLĐ'] + count['K1L'] + count['K2L'] + count['KDL'], count['Rc'],
-      count['Ô'] + count['TN'] + count['TS'], count['XLĐ'] + count['KDL'], count['F'], count['L'], count['B'] + count['BL']);
-    rows.push(row.join(';'));
+    const AK = count['XĐ'] + count['KD'];
+    const AL = count['L'] + count['F'] + count['XL'] + count['XLĐ'] + count['K1L'] + count['K2L'] + count['KDL'];
+    const AM = count['DL'];
+    const AO = count['XL'] + count['XLĐ'] + count['K1L'] + count['K2L'] + count['KDL'];
+    const AP = count['Rc'];
+    const AQ = count['Ô'] + count['TN'] + count['TS'];
+    const AR = count['XLĐ'] + count['KDL'];
+    const AU = count['F'];
+    const AV = count['L'];
+    const AW = count['B'] + count['BL'];
+    row.push(AJ, AK, AL, AM, AO, AP, AQ, AR, AU, AV, AW);
+    ws.addRow(row);
+
+    totals.luong += pay.tongLuongPhuCap;
+    totals.AJ += AJ; totals.AK += AK; totals.AL += AL; totals.AM += AM; totals.AO += AO;
+    totals.AP += AP; totals.AQ += AQ; totals.AR += AR; totals.AU += AU; totals.AV += AV; totals.AW += AW;
   });
-  return '\uFEFF' + rows.join('\n');
+
+  const totalRow = ['Tổng cộng', Math.round(totals.luong), ''];
+  for (let d = 1; d <= nDays; d++) totalRow.push('');
+  totalRow.push(totals.AJ, totals.AK, totals.AL, totals.AM, totals.AO, totals.AP, totals.AQ, totals.AR, totals.AU, totals.AV, totals.AW);
+  ws.addRow(totalRow);
+
+  // Dinh dang: Times New Roman 12, ke vien toan bo, khong ghi chu thich gi them - chi Header + du lieu
+  const lastRow = ws.rowCount;
+  const lastCol = headers.length;
+  for (let r = 1; r <= lastRow; r++) {
+    const row = ws.getRow(r);
+    for (let c = 1; c <= lastCol; c++) {
+      const cell = row.getCell(c);
+      cell.font = { name: 'Times New Roman', size: 12, bold: (r === 1 || r === lastRow) };
+      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+      cell.alignment = { vertical: 'middle', horizontal: c === 1 ? 'left' : (c <= 3 ? 'right' : 'center') };
+    }
+  }
+
+  ws.getColumn(1).width = 24;
+  ws.getColumn(2).width = 16;
+  ws.getColumn(3).width = 12;
+  for (let d = 1; d <= nDays; d++) ws.getColumn(3 + d).width = 5;
+  for (let i = 0; i < 11; i++) ws.getColumn(3 + nDays + 1 + i).width = 10;
+
+  ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }];
+
+  return wb;
 }
 
 /* ---------------- Auth routes ---------------- */
@@ -284,15 +328,20 @@ app.delete('/api/state/registrations/swap', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-/* ---------------- Xuat CSV theo yeu cau ---------------- */
-app.get('/api/export/csv', requireAuth, (req, res) => {
+/* ---------------- Xuat Excel theo yeu cau ---------------- */
+app.get('/api/export/excel', requireAuth, async (req, res) => {
   const y = Number(req.query.year), m = Number(req.query.month) - 1;
   if (!y || m < 0 || m > 11) return res.status(400).json({ error: 'Thiếu hoặc sai year/month.' });
   const db = getDb();
-  const csv = buildMonthCSV(db.state, y, m);
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="ChamCong_${y}_${String(m + 1).padStart(2, '0')}.csv"`);
-  res.send(csv);
+  try {
+    const wb = await buildMonthWorkbook(db.state, y, m);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="ChamCong_${y}_${String(m + 1).padStart(2, '0')}.xlsx"`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    res.status(500).json({ error: 'Không tạo được file Excel: ' + e.message });
+  }
 });
 
 /* ---------------- Sao luu toan bo du lieu (tai truc tiep qua trinh duyet, khong can Samba/Filebrowser) ---------------- */
@@ -331,13 +380,17 @@ app.post('/api/admin/snapshots/:filename/restore', requireAuth, requireAdmin, (r
 function ensureExportDir() {
   if (!fs.existsSync(EXPORT_DIR)) fs.mkdirSync(EXPORT_DIR, { recursive: true });
 }
-function autoExportMonth(y, m) {
+async function autoExportMonth(y, m) {
   ensureExportDir();
   const db = getDb();
-  const csv = buildMonthCSV(db.state, y, m);
-  const fname = `ChamCong_${y}_${String(m + 1).padStart(2, '0')}.csv`;
-  fs.writeFileSync(path.join(EXPORT_DIR, fname), csv, 'utf8');
-  console.log(`[auto-export] Đã lưu ${fname} vào ${EXPORT_DIR}`);
+  try {
+    const wb = await buildMonthWorkbook(db.state, y, m);
+    const fname = `ChamCong_${y}_${String(m + 1).padStart(2, '0')}.xlsx`;
+    await wb.xlsx.writeFile(path.join(EXPORT_DIR, fname));
+    console.log(`[auto-export] Đã lưu ${fname} vào ${EXPORT_DIR}`);
+  } catch (e) {
+    console.error('[auto-export] Lỗi khi xuất file:', e.message);
+  }
 }
 // 00:05 sang ngay 1 hang thang -> tu dong xuat file cua THANG VUA KET THUC (thang truoc)
 cron.schedule('5 0 1 * *', () => {

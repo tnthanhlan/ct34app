@@ -600,8 +600,17 @@ function buildBangCongRow(emp, nDays){
     const sel = document.createElement('select');
     sel.className = 'daysel';
     sel.innerHTML = codeSelectHtml(code);
-    sel.style.background = '#fff';
-    sel.style.color = code ? '#1F2933' : '#b7bec5';
+    const swapColor = getSwapPairColor(dateStr, emp.id);
+    if(code==='F'){
+      sel.style.background = '#FFE08A';
+      sel.style.color = '#5c4500';
+    } else if(swapColor){
+      sel.style.background = swapColor;
+      sel.style.color = '#1F2933';
+    } else {
+      sel.style.background = '#fff';
+      sel.style.color = code ? '#1F2933' : '#b7bec5';
+    }
     sel.style.fontWeight = '700';
     sel.addEventListener('change', async ()=>{
       await setGridCode(emp.id, dateStr, sel.value);
@@ -654,7 +663,7 @@ function renderCalendar(){
     rowDow.appendChild(makeTh(WEEKDAY_LABELS[dow].replace('Thứ ','T').replace('Chủ nhật','CN'), false, wknd));
     rowDate.appendChild(makeTh(String(d), false, wknd));
   }
-  ['Công (AJ)','Ca 3 (AK)','Lễ+phép (AL)','Du lịch (AM)','Bù lễ (AO)','Riêng lg (AP)','Ốm/TN/TS (AQ)','Ca3 lễ (AR)','Phép (AU)','Lễ (AV)','Bù (AW)'].forEach(h=>{
+  ['Công','Ca 3','Lễ+phép','Du lịch','Bù lễ','Riêng lg','Ốm/TN/TS','Ca3 lễ','Phép','Lễ','Bù'].forEach(h=>{
     rowDow.appendChild(makeTh(h,false)); rowDate.appendChild(makeTh('',false));
   });
   thead.appendChild(rowDow); thead.appendChild(rowDate);
@@ -666,8 +675,60 @@ function renderCalendar(){
     else if(item.type==='blank') tbody.appendChild(blankRowHtml(nDays, 2, 11));
     else tbody.appendChild(buildBangCongRow(item.emp, nDays));
   });
+  tbody.appendChild(buildBangCongTotalsRow(nDays));
   table.appendChild(tbody);
   applyRolePermissions();
+}
+
+function buildBangCongTotalsRow(nDays){
+  const tr = document.createElement('tr');
+  tr.classList.add('totalrow');
+  const nameTd = document.createElement('td');
+  nameTd.className = 'namecell';
+  nameTd.textContent = 'Tổng cộng';
+  nameTd.style.fontWeight = '700';
+  tr.appendChild(nameTd);
+
+  let totalLuong = 0;
+  const totals = {AJ:0,AK:0,AL:0,AM:0,AO:0,AP:0,AQ:0,AR:0,AU:0,AV:0,AW:0};
+  state.employees.forEach(emp=>{
+    const pay = employeePayroll(emp, viewYear, viewMonth);
+    totalLuong += pay.tongLuongPhuCap;
+    const count = {}; CODE_ORDER.forEach(c=>count[c]=0);
+    for(let d=1; d<=nDays; d++){
+      const code = computeFinalCode(emp, viewYear, viewMonth, d);
+      count[code] = (count[code]||0)+1;
+    }
+    totals.AJ += WORK_CODES.reduce((s,c)=>s+count[c],0);
+    totals.AK += count['XĐ']+count['KD'];
+    totals.AL += count['L']+count['F']+count['XL']+count['XLĐ']+count['K1L']+count['K2L']+count['KDL'];
+    totals.AM += count['DL'];
+    totals.AO += count['XL']+count['XLĐ']+count['K1L']+count['K2L']+count['KDL'];
+    totals.AP += count['Rc'];
+    totals.AQ += count['Ô']+count['TN']+count['TS'];
+    totals.AR += count['XLĐ']+count['KDL'];
+    totals.AU += count['F'];
+    totals.AV += count['L'];
+    totals.AW += count['B']+count['BL'];
+  });
+
+  const mucLuongTd = document.createElement('td');
+  mucLuongTd.textContent = Math.round(totalLuong).toLocaleString('vi-VN');
+  mucLuongTd.style.textAlign = 'right';
+  mucLuongTd.style.fontWeight = '700';
+  tr.appendChild(mucLuongTd);
+  tr.appendChild(document.createElement('td')); // he so - khong cong don
+
+  for(let d=1; d<=nDays; d++) tr.appendChild(document.createElement('td'));
+
+  ['AJ','AK','AL','AM','AO','AP','AQ','AR','AU','AV','AW'].forEach(key=>{
+    const td = document.createElement('td');
+    td.className = 'sumcell';
+    td.style.fontWeight = '700';
+    td.textContent = totals[key];
+    tr.appendChild(td);
+  });
+  return tr;
 }
 
 document.getElementById('btnClear').addEventListener('click', async ()=>{
@@ -683,7 +744,7 @@ document.getElementById('btnClear').addEventListener('click', async ()=>{
 });
 
 document.getElementById('btnExportCSV').addEventListener('click', ()=>{
-  window.location.href = `/api/export/csv?year=${viewYear}&month=${viewMonth+1}`;
+  window.location.href = `/api/export/excel?year=${viewYear}&month=${viewMonth+1}`;
 });
 
 /* ================= Cham cong (dang ky doi ca / nghi phep) tab ================= */
@@ -848,6 +909,7 @@ function renderMeal(){
   const nDays = daysInMonth(viewYear, viewMonth);
   const body = document.getElementById('mealBody');
   body.innerHTML='';
+  let totalCong = 0, totalCa3 = 0, totalBuaAn = 0;
   state.employees.forEach((emp, idx)=>{
     const count={}; CODE_ORDER.forEach(c=>count[c]=0);
     for(let d=1; d<=nDays; d++){
@@ -858,6 +920,12 @@ function renderMeal(){
     const ca3Auto = count['KD']+count['XĐ']+count['KDL']+count['XLĐ'];
     const mealAuto = Math.max(0, AJ-ca3Auto);
     const ov = state.mealOverrides[mealKey(emp.id)] || {soCong:null, soCa3:null, soBuaAn:null, ghiChu:''};
+    const effCong = (ov.soCong===null||ov.soCong===undefined) ? AJ : ov.soCong;
+    const effCa3 = (ov.soCa3===null||ov.soCa3===undefined) ? ca3Auto : ov.soCa3;
+    const effBuaAn = (ov.soBuaAn===null||ov.soBuaAn===undefined) ? mealAuto : ov.soBuaAn;
+    totalCong += Number(effCong)||0;
+    totalCa3 += Number(effCa3)||0;
+    totalBuaAn += Number(effBuaAn)||0;
 
     const tr = document.createElement('tr');
     const tdTT = document.createElement('td'); tdTT.textContent = idx+1; tr.appendChild(tdTT);
@@ -897,6 +965,21 @@ function renderMeal(){
 
     body.appendChild(tr);
   });
+
+  const totalTr = document.createElement('tr');
+  totalTr.classList.add('totalrow');
+  const tdBlank1 = document.createElement('td'); totalTr.appendChild(tdBlank1);
+  const tdLabel = document.createElement('td'); tdLabel.textContent = 'Tổng cộng'; tdLabel.style.fontWeight='700'; totalTr.appendChild(tdLabel);
+  [totalCong, totalCa3, totalBuaAn].forEach(v=>{
+    const td = document.createElement('td');
+    td.textContent = v;
+    td.style.textAlign = 'center';
+    td.style.fontWeight = '700';
+    totalTr.appendChild(td);
+  });
+  totalTr.appendChild(document.createElement('td'));
+  body.appendChild(totalTr);
+
   applyRolePermissions();
 }
 

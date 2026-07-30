@@ -24,7 +24,7 @@ function defaultEmployees() {
     { name: 'Nguyễn Đức Hùng', dob: '03/09/1975', chucdanh: 'KS SC điện', thangbang: 'D1.2', bac: 'KS-6/6', hesoCD: 3.25, phucap: 'none', schedule: 'TAM', offset: 1, kipId: 'D', allow: { m3: false, pct5: false, ksg: false } },
     { name: 'Tạ Ngọc Bách', dob: '20/11/1976', chucdanh: 'CN SC điện', thangbang: 'A2.N2', bac: 'CN-4/5', hesoCD: 2.58, phucap: 'none', schedule: 'TAM', offset: 1, kipId: 'C', allow: { m3: false, pct5: false, ksg: true } },
     { name: 'Nguyễn Quang Hiếu', dob: '30/12/1986', chucdanh: 'CN SC điện', thangbang: 'A2.N2', bac: 'CN-3/5', hesoCD: 2.58, phucap: 'none', schedule: 'TAM', offset: 1, kipId: 'C', allow: { m3: false, pct5: true, ksg: false } },
-    { name: 'Đặng Thế Hưng', dob: '02/06/1990', chucdanh: 'KS SC điện', thangbang: 'D1.2', bac: 'KS-2/6', hesoCD: 3.25, phucap: 'none', schedule: 'TAM', offset: 1, kipId: null, allow: { m3: false, pct5: false, ksg: false } }
+    { name: 'Đặng Thế Hưng', dob: '02/06/1990', chucdanh: 'KS SC điện', thangbang: 'D1.2', bac: 'KS-2/6', hesoCD: 3.25, phucap: 'none', schedule: 'HC', offset: 0, kipId: null, allow: { m3: false, pct5: false, ksg: false } }
   ];
   return list.map((e, i) => Object.assign({ id: 'nv' + (i + 1) }, e));
 }
