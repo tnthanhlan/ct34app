@@ -115,6 +115,16 @@
     <thead><tr><th>Thời điểm lưu</th><th></th></tr></thead>
     <tbody id="snapshotBody"></tbody>
   </table>
+
+  <h3 class="sec">Sao lưu ngoài /data (tách biệt khỏi add-on, sống sót qua sự cố hạ tầng)</h3>
+  <div class="note" style="margin-bottom:10px">
+    Server tự lưu 2 nơi hoàn toàn độc lập nhau, mỗi nơi giữ "Theo thời điểm" (200 bản gần nhất, mỗi 30 phút/lần, ~4 ngày) + "Theo ngày" (60 ngày, mỗi ngày 1 bản đầu tiên): <b>/share/chamcong_exports</b> (khu vực chung Home Assistant) và <b>NASDATA</b> (ổ HDD NAS riêng). Nếu 1 nơi gặp sự cố, nơi còn lại vẫn còn nguyên.
+  </div>
+  <button class="btn" id="btnRefreshShareBackups" style="margin-bottom:8px">⟳ Tải lại danh sách sao lưu</button>
+  <table class="bac-table" id="shareBackupTable">
+    <thead><tr><th>Nguồn</th><th>Loại</th><th>Thời điểm lưu</th><th></th></tr></thead>
+    <tbody id="shareBackupBody"></tbody>
+  </table>
 </div>
 
 <!-- ================= BANG CONG ================= -->

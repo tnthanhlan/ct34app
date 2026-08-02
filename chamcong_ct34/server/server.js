@@ -23,7 +23,7 @@ const cookieParser = require('cookie-parser');
 const cron = require('node-cron');
 const ExcelJS = require('exceljs');
 
-const { getDb, persist, listSnapshots, readSnapshot } = require('./db');
+const { getDb, persist, listSnapshots, readSnapshot, defaultState } = require('./db');
 const {
   hashPassword, verifyPassword, issueToken, setSessionCookie, clearSessionCookie,
   requireAuth, requireAdmin
@@ -51,6 +51,9 @@ const USER_EMAIL = 'doisuachuact34@gmail.com';
 
 const PORT = process.env.PORT || 8099;
 const EXPORT_DIR = process.env.EXPORT_DIR || path.join(__dirname, '..', 'exports');
+// Thu muc tren o NASDATA (mount qua "media:rw" trong config.yaml) - hoan toan tach biet voi /share va /data,
+// them 1 lop bao ve nua phong khi rieng /share cung gap su co (vi du /share va /data cung nam chung 1 o dia goc).
+const NASDATA_DIR = process.env.NASDATA_DIR || '/media/NASDATA/ct34_backups';
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -402,28 +405,28 @@ app.get('/api/state', requireAuth, (req, res) => {
 app.put('/api/state/settings', requireAuth, requireAdmin, (req, res) => {
   const db = getDb();
   Object.assign(db.state.settings, req.body || {});
-  persist();
+  persist(); setImmediate(backupStateToShare);
   res.json(db.state.settings);
 });
 
 app.put('/api/state/bactable', requireAuth, requireAdmin, (req, res) => {
   const db = getDb();
   db.state.bacTable = req.body || [];
-  persist();
+  persist(); setImmediate(backupStateToShare);
   res.json(db.state.bacTable);
 });
 
 app.put('/api/state/kips', requireAuth, requireAdmin, (req, res) => {
   const db = getDb();
   db.state.kips = req.body || [];
-  persist();
+  persist(); setImmediate(backupStateToShare);
   res.json(db.state.kips);
 });
 
 app.put('/api/state/employees', requireAuth, requireAdmin, (req, res) => {
   const db = getDb();
   db.state.employees = req.body || [];
-  persist();
+  persist(); setImmediate(backupStateToShare);
   res.json(db.state.employees);
 });
 
@@ -434,7 +437,7 @@ app.put('/api/state/grid', requireAuth, requireAdmin, (req, res) => {
   if (!db.state.grid[empId]) db.state.grid[empId] = {};
   if (!code) delete db.state.grid[empId][dateStr];
   else db.state.grid[empId][dateStr] = code;
-  persist();
+  persist(); setImmediate(backupStateToShare);
   res.json({ ok: true });
 });
 
@@ -444,7 +447,7 @@ app.put('/api/state/monthly-allowance', requireAuth, requireAdmin, (req, res) =>
   const db = getDb();
   const key = `${empId}_${yearMonth}`;
   db.state.monthlyAllowances[key] = { m3: !!m3, pct5: !!pct5 };
-  persist();
+  persist(); setImmediate(backupStateToShare);
   res.json({ ok: true });
 });
 
@@ -460,7 +463,7 @@ app.put('/api/state/meal-override', requireAuth, requireAdmin, (req, res) => {
     soBuaAn: soBuaAn === '' || soBuaAn === null || soBuaAn === undefined ? null : Number(soBuaAn),
     ghiChu: ghiChu !== undefined ? ghiChu : (existing.ghiChu || '')
   };
-  persist();
+  persist(); setImmediate(backupStateToShare);
   res.json({ ok: true });
 });
 
@@ -472,7 +475,7 @@ app.post('/api/state/registrations/phep', requireAuth, (req, res) => {
   const r = db.state.registrations[dateStr];
   const i = r.phep.indexOf(empId);
   if (i >= 0) r.phep.splice(i, 1); else r.phep.push(empId);
-  persist();
+  persist(); setImmediate(backupStateToShare);
   res.json(r);
 });
 
@@ -482,7 +485,7 @@ app.post('/api/state/registrations/swap', requireAuth, (req, res) => {
   const db = getDb();
   if (!db.state.registrations[dateStr]) db.state.registrations[dateStr] = { phep: [], swaps: [] };
   db.state.registrations[dateStr].swaps.push([empIdA, empIdB]);
-  persist();
+  persist(); setImmediate(backupStateToShare);
   res.json(db.state.registrations[dateStr]);
 });
 
@@ -493,7 +496,7 @@ app.delete('/api/state/registrations/swap', requireAuth, (req, res) => {
   if (db.state.registrations[dateStr]) {
     db.state.registrations[dateStr].swaps = db.state.registrations[dateStr].swaps.filter(p => p[0] !== empId && p[1] !== empId);
   }
-  persist();
+  persist(); setImmediate(backupStateToShare);
   res.json({ ok: true });
 });
 
@@ -556,7 +559,7 @@ app.post('/api/admin/snapshots/:filename/restore', requireAuth, requireAdmin, (r
   if (!data.state) return res.status(400).json({ error: 'Snapshot không hợp lệ.' });
   const db = getDb();
   db.state = data.state;
-  persist();
+  persist(); setImmediate(backupStateToShare);
   res.json({ ok: true });
 });
 
@@ -572,7 +575,7 @@ app.post('/api/admin/restore-upload', requireAuth, requireAdmin, (req, res) => {
   if (!newState) return res.status(400).json({ error: 'File không đúng định dạng backup CT34 (không tìm thấy dữ liệu nhân sự bên trong).' });
   const db = getDb();
   db.state = newState;
-  persist();
+  persist(); setImmediate(backupStateToShare);
   res.json({ ok: true });
 });
 
@@ -607,25 +610,159 @@ cron.schedule('50 23 * * *', () => {
   autoExportMonth(now.getFullYear(), now.getMonth());
 });
 
-/* ---------------- Sao luu du lieu ra /share (KHAC HAN /data cua add-on) ----------------
+/* ---------------- Sao luu du lieu ra nhieu noi doc lap (KHAC HAN /data cua add-on) ----------------
    Ly do quan trong: neu /data cua rieng add-on nay bi mat (doi o dia, cai lai add-on...),
    ban sao trong chinh /data (kieu snapshot trong db.js) se mat theo luon, khong bao ve duoc gi.
-   /share la khu vuc chung cua ca he thong Home Assistant, doc lap voi /data cua tung add-on -
-   luu them 1 ban o day de neu chi rieng /data cua CT34 gap su co thi van con duong khoi phuc. */
-function backupStateToShare() {
-  try {
-    ensureExportDir();
-    const db = getDb();
-    const dayName = new Date().toLocaleDateString('en-US', { weekday: 'short' }); // Mon, Tue, ...
-    const fname = `ct34_state_backup_${dayName}.json`;
-    fs.writeFileSync(path.join(EXPORT_DIR, fname), JSON.stringify(db.state, null, 2), 'utf8');
-  } catch (e) {
-    console.error('Không sao lưu được ra /share:', e.message);
+
+   Ghi ra CA 2 NOI DOC LAP, moi noi that bai khong anh huong noi con lai:
+   - /share/chamcong_exports  (khu vuc chung cua Home Assistant)
+   - /media/NASDATA/ct34_backups (o HDD NAS rieng, tach hoan toan khoi o goc cua Home Assistant)
+
+   KHONG dung 1 file ghi de theo ten thu trong tuan nua (loi cu: neu su co xay ra giua ngay,
+   ghi de lien tuc 30 phut/lan se xoa mat ca ban tot dau ngay hom do).
+   Thay vao do luu NHIEU BAN theo dung moc thoi gian, khong bao gio ghi de len nhau:
+   - history/: moi 30 phut 1 ban, giu 200 ban gan nhat (~4 ngay lien tuc)
+   - daily/:   moi ngay giu lai 1 ban (ban dau tien trong ngay), giu 60 ngay gan nhat
+*/
+const BACKUP_DESTS = [
+  { key: 'share', baseDir: () => EXPORT_DIR },
+  { key: 'nasdata', baseDir: () => NASDATA_DIR }
+];
+const SHARE_HISTORY_KEEP = 200;
+const SHARE_DAILY_KEEP = 60;
+let lastDailyBackupDate = null;
+
+function pruneDir(dir, keepCount) {
+  if (!fs.existsSync(dir)) return;
+  const files = fs.readdirSync(dir).filter(f => f.startsWith('ct34_')).sort();
+  while (files.length > keepCount) {
+    fs.unlinkSync(path.join(dir, files.shift()));
   }
 }
-// Luu 1 lan luc khoi dong, roi cu moi 30 phut luu lai (xoay vong theo ten thu trong tuan, giu toi da 7 ngay)
+
+function backupStateToShare() {
+  const db = getDb();
+  const now = new Date();
+  const stamp = now.toISOString().replace(/[:.]/g, '-');
+  const todayKey = now.toISOString().slice(0, 10); // YYYY-MM-DD
+  const json = JSON.stringify(db.state, null, 2);
+  const isNewDay = lastDailyBackupDate !== todayKey;
+
+  BACKUP_DESTS.forEach(({ key, baseDir }) => {
+    try {
+      const base = baseDir();
+      if (!fs.existsSync(base)) fs.mkdirSync(base, { recursive: true });
+
+      const histDir = path.join(base, 'history');
+      if (!fs.existsSync(histDir)) fs.mkdirSync(histDir, { recursive: true });
+      fs.writeFileSync(path.join(histDir, `ct34_${stamp}.json`), json, 'utf8');
+      pruneDir(histDir, SHARE_HISTORY_KEEP);
+
+      if (isNewDay) {
+        const dailyDir = path.join(base, 'daily');
+        if (!fs.existsSync(dailyDir)) fs.mkdirSync(dailyDir, { recursive: true });
+        fs.writeFileSync(path.join(dailyDir, `ct34_${todayKey}.json`), json, 'utf8');
+        pruneDir(dailyDir, SHARE_DAILY_KEEP);
+      }
+    } catch (e) {
+      console.error(`Không sao lưu được ra [${key}]:`, e.message);
+    }
+  });
+  if (isNewDay) lastDailyBackupDate = todayKey;
+}
+/* ---------------- Tu phat hien + tu chua khi /data bi tao moi bat thuong ----------------
+   Day la lop bao ve cuoi cung: neu Supervisor/he thong tao lai /data rong (do o dia ngoai
+   khong mount kip luc khoi dong...), CT34 se tu nhan ra ngay luc khoi dong va tu khoi phuc
+   tu ban sao luu gan nhat tren /share hoac NASDATA - KHONG can cho ai phat hien ra roi
+   tu tay khoi phuc nua. */
+function looksFreshlyDefaulted(state) {
+  const defaults = defaultState();
+  if (!state.employees || state.employees.length !== defaults.employees.length) return false;
+  const sameNames = state.employees.every((e, i) => e.name === defaults.employees[i].name);
+  const noRegistrations = !state.registrations || Object.keys(state.registrations).length === 0;
+  const noGridOverrides = !state.grid || Object.keys(state.grid).length === 0;
+  return sameNames && noRegistrations && noGridOverrides;
+}
+
+function findNewestBackupFile() {
+  let newest = null; // { path, mtime }
+  BACKUP_DESTS.forEach(({ baseDir }) => {
+    const histDir = path.join(baseDir(), 'history');
+    if (!fs.existsSync(histDir)) return;
+    fs.readdirSync(histDir).filter(f => f.startsWith('ct34_')).forEach(f => {
+      const p = path.join(histDir, f);
+      try {
+        const stat = fs.statSync(p);
+        if (!newest || stat.mtimeMs > newest.mtime) newest = { path: p, mtime: stat.mtimeMs };
+      } catch (e) { /* bo qua file loi */ }
+    });
+  });
+  return newest ? newest.path : null;
+}
+
+function autoHealIfFreshData() {
+  const db = getDb();
+  if (!looksFreshlyDefaulted(db.state)) return; // du lieu binh thuong, khong can lam gi
+  console.warn('⚠️  [AUTO-HEAL] Phát hiện dữ liệu trông như vừa bị tạo mới (trống, đúng y hệt mặc định). Đang tìm bản sao lưu gần nhất để tự khôi phục...');
+  const newestPath = findNewestBackupFile();
+  if (!newestPath) {
+    console.warn('⚠️  [AUTO-HEAL] Không tìm thấy bản sao lưu nào trên /share hoặc NASDATA để tự khôi phục. Nếu đây thực sự là lần cài đặt đầu tiên thì bỏ qua cảnh báo này.');
+    return;
+  }
+  try {
+    const backupState = JSON.parse(fs.readFileSync(newestPath, 'utf8'));
+    if (looksFreshlyDefaulted(backupState)) {
+      console.warn('⚠️  [AUTO-HEAL] Bản sao lưu gần nhất cũng trống - có thể đây thực sự là cài đặt mới, không tự khôi phục.');
+      return;
+    }
+    db.state = backupState;
+    persist(); setImmediate(backupStateToShare);
+    console.warn(`✅ [AUTO-HEAL] Đã TỰ ĐỘNG khôi phục dữ liệu từ bản sao lưu: ${newestPath}`);
+  } catch (e) {
+    console.error('⚠️  [AUTO-HEAL] Lỗi khi thử tự khôi phục:', e.message);
+  }
+}
+autoHealIfFreshData();
+
+// Luu 1 lan luc khoi dong, roi cu moi 30 phut luu lai
 backupStateToShare();
 setInterval(backupStateToShare, 30 * 60 * 1000);
+
+app.get('/api/admin/share-backups', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const listDir = (dir) => fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.startsWith('ct34_')).sort().reverse() : [];
+    const result = {};
+    BACKUP_DESTS.forEach(({ key, baseDir }) => {
+      result[key] = {
+        history: listDir(path.join(baseDir(), 'history')),
+        daily: listDir(path.join(baseDir(), 'daily'))
+      };
+    });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/admin/share-backups/:dest/:folder/:filename/restore', requireAuth, requireAdmin, (req, res) => {
+  const { dest, folder, filename } = req.params;
+  const destDef = BACKUP_DESTS.find(d => d.key === dest);
+  if (!destDef) return res.status(400).json({ error: 'Nguồn không hợp lệ.' });
+  if (folder !== 'history' && folder !== 'daily') return res.status(400).json({ error: 'Thư mục không hợp lệ.' });
+  const dir = path.join(destDef.baseDir(), folder);
+  const p = path.join(dir, path.basename(filename));
+  if (!fs.existsSync(p)) return res.status(404).json({ error: 'Không tìm thấy file.' });
+  try {
+    const newState = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (!newState.employees) return res.status(400).json({ error: 'File không hợp lệ.' });
+    const db = getDb();
+    db.state = newState;
+    persist(); setImmediate(backupStateToShare);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Lỗi đọc file: ' + e.message });
+  }
+});
 
 /* ---------------- Static frontend ---------------- */
 app.use(express.static(path.join(__dirname, '..', 'public'), {

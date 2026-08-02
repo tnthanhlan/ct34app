@@ -478,6 +478,59 @@ document.getElementById('restoreFileInput').addEventListener('change', async (e)
   }
 });
 
+function formatShareStamp(filename){
+  // dang ct34_2026-08-02T13-05-00-123Z.json hoac ct34_2026-08-02.json
+  const m = filename.match(/ct34_(.+)\.json/);
+  if(!m) return filename;
+  const raw = m[1];
+  if(!raw.includes('T')) return raw; // dang ngay, hien nguyen YYYY-MM-DD
+  const tIdx = raw.indexOf('T');
+  const datePart = raw.slice(0, tIdx);
+  const timePart = raw.slice(tIdx+1).replace('Z','');
+  const parts = timePart.split('-');
+  const iso = `${datePart}T${parts[0]}:${parts[1]}:${parts[2]}.${parts[3]||'000'}Z`;
+  const d = new Date(iso);
+  return isNaN(d) ? filename : d.toLocaleString('vi-VN');
+}
+async function renderShareBackups(){
+  const body = document.getElementById('shareBackupBody');
+  body.innerHTML = '<tr><td colspan="4">Đang tải...</td></tr>';
+  const DEST_LABELS = {share:'/share', nasdata:'NASDATA'};
+  try{
+    const data = await api('GET', '/api/admin/share-backups');
+    const rows = [];
+    Object.keys(data).forEach(dest=>{
+      (data[dest].daily||[]).forEach(f=>rows.push({dest, folder:'daily', label:'Theo ngày', filename:f}));
+      (data[dest].history||[]).forEach(f=>rows.push({dest, folder:'history', label:'Theo thời điểm', filename:f}));
+    });
+    if(!rows.length){ body.innerHTML = '<tr><td colspan="4">Chưa có bản nào.</td></tr>'; return; }
+    body.innerHTML = '';
+    rows.forEach(({dest, folder, label, filename})=>{
+      const tr = document.createElement('tr');
+      const tdSrc = document.createElement('td'); tdSrc.textContent = DEST_LABELS[dest]||dest; tr.appendChild(tdSrc);
+      const tdType = document.createElement('td'); tdType.textContent = label; tr.appendChild(tdType);
+      const tdTime = document.createElement('td'); tdTime.textContent = formatShareStamp(filename); tr.appendChild(tdTime);
+      const tdAction = document.createElement('td');
+      const restoreBtn = document.createElement('button');
+      restoreBtn.className = 'btn'; restoreBtn.textContent = 'Khôi phục';
+      restoreBtn.addEventListener('click', async ()=>{
+        if(!confirm('Khôi phục sẽ THAY THẾ TOÀN BỘ dữ liệu hiện tại bằng đúng bản ('+(DEST_LABELS[dest]||dest)+' - '+label+') lúc '+formatShareStamp(filename)+'. Bạn chắc chắn chứ?')) return;
+        try{
+          await api('POST', '/api/admin/share-backups/'+dest+'/'+folder+'/'+encodeURIComponent(filename)+'/restore', {});
+          alert('Đã khôi phục xong. Trang sẽ tự tải lại.');
+          location.reload();
+        }catch(e){ alert('Không khôi phục được: '+e.message); }
+      });
+      tdAction.appendChild(restoreBtn);
+      tr.appendChild(tdAction);
+      body.appendChild(tr);
+    });
+  }catch(e){
+    body.innerHTML = '<tr><td colspan="4">Không tải được danh sách: '+e.message+'</td></tr>';
+  }
+}
+document.getElementById('btnRefreshShareBackups').addEventListener('click', renderShareBackups);
+
 /* ================= Bang Cong tab ================= */
 function initMonthYearControls(){
   const selMonth = document.getElementById('selMonth');
@@ -1144,7 +1197,7 @@ async function bootApp(){
   renderLegendTable();
   renderCalendar();
   renderDangKy();
-  if(currentRole==='admin') renderSnapshots();
+  if(currentRole==='admin'){ renderSnapshots(); renderShareBackups(); }
 }
 
 (async function init(){
