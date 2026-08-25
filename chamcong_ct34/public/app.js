@@ -210,7 +210,7 @@ function applyRolePermissions(){
   document.querySelectorAll('#tab-chamcong select.daysel').forEach(el=>{ el.disabled = isUser; });
   document.querySelectorAll('#tab-tonghopnam input').forEach(el=>{ el.disabled = isUser; });
   document.querySelectorAll('#tab-anca input').forEach(el=>{ el.disabled = isUser; });
-  ['btnClear','btnExportCSV'].forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = isUser; });
+  ['btnClear','btnExportCSV','btnLockMonth'].forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = isUser; });
   const note = document.getElementById('commonRoleNote');
   if(note) note.classList.toggle('hidden', !isUser);
 }
@@ -823,6 +823,16 @@ document.getElementById('btnClear').addEventListener('click', async ()=>{
     }
   }
   renderCalendar();
+});
+
+document.getElementById('btnLockMonth').addEventListener('click', async ()=>{
+  if(!confirm('Chốt dữ liệu tháng '+(viewMonth+1)+'/'+viewYear+'?\n\nSau khi chốt, tháng này sẽ giữ nguyên mã chấm công như hiện tại, kể cả sau này bạn đổi Kíp/lịch của nhân sự ở tab Common (đổi người, đổi ca...) — thay đổi đó chỉ áp dụng cho tháng hiện tại và các tháng sau, không ảnh hưởng ngược lại tháng đã chốt này.\n\nVẫn có thể tự sửa tay từng ô sau khi chốt nếu cần, hoặc bấm "Xoá ghi đè thủ công" để mở khoá lại.')) return;
+  try{
+    const res = await api('POST', '/api/state/lock-month', {year: viewYear, month: viewMonth+1});
+    state = await api('GET', '/api/state');
+    renderCalendar();
+    alert('Đã chốt xong tháng '+(viewMonth+1)+'/'+viewYear+' ('+res.count+' ô).');
+  }catch(e){ alert('Không chốt được: '+e.message); }
 });
 
 document.getElementById('btnExportCSV').addEventListener('click', ()=>{

@@ -441,6 +441,35 @@ app.put('/api/state/grid', requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------------- Chot du lieu 1 thang (khoa lai, khong bi anh huong boi doi Kip/lich sau nay) ----------------
+   Bien moi mã tu sinh (theo cau hinh HIEN TAI cua nhan su) cua dung thang duoc chon thanh
+   "ghi de thu cong" that su luu trong state.grid. Tu do ve sau, du sau nay co doi Kip/offset/schedule
+   cua nhan su o tab Common, thang da chot van giu nguyen dung nhu luc chot - vi computeFinalCode
+   luon uu tien gia tri grid (ghi de) truoc, khong con tinh lai theo cau hinh moi nua. */
+function lockMonth(state, y, m) {
+  const nDays = daysInMonth(y, m);
+  let count = 0;
+  state.employees.forEach(emp => {
+    if (!state.grid[emp.id]) state.grid[emp.id] = {};
+    for (let d = 1; d <= nDays; d++) {
+      const dateStr = fmtDate(y, m, d);
+      if (state.grid[emp.id][dateStr]) continue; // da co ghi de roi thi giu nguyen, khong dung
+      const code = computeFinalCode(state, emp, y, m, d);
+      if (code) { state.grid[emp.id][dateStr] = code; count++; }
+    }
+  });
+  return count;
+}
+
+app.post('/api/state/lock-month', requireAuth, requireAdmin, (req, res) => {
+  const y = Number(req.body && req.body.year), m = Number(req.body && req.body.month) - 1;
+  if (!y || m < 0 || m > 11) return res.status(400).json({ error: 'Thiếu hoặc sai year/month.' });
+  const db = getDb();
+  const count = lockMonth(db.state, y, m);
+  persist(); setImmediate(backupStateToShare);
+  res.json({ ok: true, count });
+});
+
 app.put('/api/state/monthly-allowance', requireAuth, requireAdmin, (req, res) => {
   const { empId, yearMonth, m3, pct5 } = req.body || {};
   if (!empId || !yearMonth) return res.status(400).json({ error: 'Thiếu empId hoặc yearMonth.' });
@@ -602,6 +631,12 @@ async function autoExportMonth(y, m) {
 cron.schedule('5 0 1 * *', () => {
   const now = new Date();
   const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const db = getDb();
+  const count = lockMonth(db.state, prevMonth.getFullYear(), prevMonth.getMonth());
+  if (count > 0) {
+    persist(); setImmediate(backupStateToShare);
+    console.log(`[auto-lock] Đã tự động chốt ${count} ô của tháng ${prevMonth.getMonth() + 1}/${prevMonth.getFullYear()} (không còn bị ảnh hưởng bởi thay đổi Kíp/lịch sau này).`);
+  }
   autoExportMonth(prevMonth.getFullYear(), prevMonth.getMonth());
 });
 // Cung xuat lai file cua THANG HIEN TAI moi ngay luc 23:50 de luon co ban cap nhat moi nhat
