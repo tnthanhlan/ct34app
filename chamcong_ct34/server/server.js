@@ -759,6 +759,33 @@ function autoHealIfFreshData() {
 }
 autoHealIfFreshData();
 
+/* ---------------- Chot bu cac thang da qua nhung chua tung duoc chot ----------------
+   Vi tinh nang chot-tu-dong chi bat dau chay TU LUC ban co tinh nang nay duoc trien khai,
+   cac thang da ket thuc TRUOC DO (vi du: vua len ban 1.9.0 giua thang 8, thi thang 7 va
+   cac thang truoc chua bao gio duoc chot) se van bi tinh dong theo cau hinh Kip/lich hien tai.
+   Moi lan server khoi dong, tu dong chot bu toi da 12 thang gan nhat TRUOC thang hien tai
+   (khong dung cho thang hien tai, vi thang dang chay van can duoc phep sua dong).
+   lockMonth() chi dien vao o con trong, khong dung vao o da co san - nen chay lai nhieu lan
+   (moi lan server khoi dong) hoan toan an toan, khong lam hong du lieu da chot truoc do. */
+(function catchUpLockPastMonths() {
+  try {
+    const db = getDb();
+    const now = new Date();
+    let totalLocked = 0;
+    for (let i = 1; i <= 12; i++) {
+      const target = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const count = lockMonth(db.state, target.getFullYear(), target.getMonth());
+      if (count > 0) {
+        totalLocked += count;
+        console.log(`[catch-up-lock] Đã tự chốt bù ${count} ô còn thiếu của tháng ${target.getMonth() + 1}/${target.getFullYear()}.`);
+      }
+    }
+    if (totalLocked > 0) { persist(); setImmediate(backupStateToShare); }
+  } catch (e) {
+    console.error('[catch-up-lock] Lỗi khi chốt bù các tháng cũ:', e.message);
+  }
+})();
+
 // Luu 1 lan luc khoi dong, roi cu moi 30 phut luu lai
 backupStateToShare();
 setInterval(backupStateToShare, 30 * 60 * 1000);
