@@ -15,16 +15,16 @@ function defaultBacTable() {
 
 function defaultEmployees() {
   const list = [
-    { name: 'Trần Nam Thành', dob: '22/01/1974', chucdanh: 'Trưởng ca sửa chữa điện', thangbang: 'D1.2', bac: 'KS-5/6', hesoCD: 4.7, phucap: 'catruong', schedule: 'HC', offset: 0, kipId: null, allow: { m3: false, pct5: false, ksg: false } },
-    { name: 'Tạ Quốc Hiệp', dob: '05/09/1971', chucdanh: 'CN SC điện - TT', thangbang: 'A2.N2', bac: 'CN-5/5', hesoCD: 2.78, phucap: 'totruong', schedule: 'TAM', offset: 1, kipId: 'A', allow: { m3: true, pct5: false, ksg: false } },
-    { name: 'Nguyễn Đức Kiên', dob: '13/08/1984', chucdanh: 'CN SC điện - TT', thangbang: 'A2.N2', bac: 'CN-4/5', hesoCD: 2.78, phucap: 'totruong', schedule: 'TAM', offset: 1, kipId: 'D', allow: { m3: true, pct5: false, ksg: false } },
-    { name: 'Lê Văn Tú', dob: '19/05/1984', chucdanh: 'CN SC điện - TT', thangbang: 'A2.N2', bac: 'CN-4/5', hesoCD: 2.78, phucap: 'totruong', schedule: 'TAM', offset: 1, kipId: 'B', allow: { m3: false, pct5: false, ksg: false } },
-    { name: 'Nguyễn Văn Luất', dob: '02/03/1965', chucdanh: 'KS SC điện', thangbang: 'D1.2', bac: 'KS-6/6', hesoCD: 3.25, phucap: 'none', schedule: 'TAM', offset: 1, kipId: 'B', allow: { m3: false, pct5: false, ksg: false } },
-    { name: 'Nguyễn Hữu Hùng', dob: '02/08/1987', chucdanh: 'CN SC điện', thangbang: 'A2.N2', bac: 'CN-4/5', hesoCD: 2.58, phucap: 'none', schedule: 'TAM', offset: 1, kipId: 'A', allow: { m3: false, pct5: false, ksg: false } },
-    { name: 'Nguyễn Đức Hùng', dob: '03/09/1975', chucdanh: 'KS SC điện', thangbang: 'D1.2', bac: 'KS-6/6', hesoCD: 3.25, phucap: 'none', schedule: 'TAM', offset: 1, kipId: 'D', allow: { m3: false, pct5: false, ksg: false } },
-    { name: 'Tạ Ngọc Bách', dob: '20/11/1976', chucdanh: 'CN SC điện', thangbang: 'A2.N2', bac: 'CN-4/5', hesoCD: 2.58, phucap: 'none', schedule: 'TAM', offset: 1, kipId: 'C', allow: { m3: false, pct5: false, ksg: true } },
-    { name: 'Nguyễn Quang Hiếu', dob: '30/12/1986', chucdanh: 'CN SC điện', thangbang: 'A2.N2', bac: 'CN-3/5', hesoCD: 2.58, phucap: 'none', schedule: 'TAM', offset: 1, kipId: 'C', allow: { m3: false, pct5: true, ksg: false } },
-    { name: 'Đặng Thế Hưng', dob: '02/06/1990', chucdanh: 'KS SC điện', thangbang: 'D1.2', bac: 'KS-2/6', hesoCD: 3.25, phucap: 'none', schedule: 'HC', offset: 0, kipId: null, allow: { m3: false, pct5: false, ksg: false } }
+    { name: 'Trần Nam Thành', dob: '22/01/1974', chucdanh: 'Trưởng ca sửa chữa điện', thangbang: 'D1.2', bac: 'KS-5/6', hesoCD: 4.7, phucap: 'catruong', schedule: 'HC', offset: 0, kipId: null, ghiChu: '', allow: { m3: false, pct5: false, neg5: false, ksg: false } },
+    { name: 'Tạ Quốc Hiệp', dob: '05/09/1971', chucdanh: 'CN SC điện - TT', thangbang: 'A2.N2', bac: 'CN-5/5', hesoCD: 2.78, phucap: 'totruong', schedule: 'TAM', offset: 1, kipId: 'A', ghiChu: '', allow: { m3: true, pct5: false, neg5: false, ksg: false } },
+    { name: 'Nguyễn Đức Kiên', dob: '13/08/1984', chucdanh: 'CN SC điện - TT', thangbang: 'A2.N2', bac: 'CN-4/5', hesoCD: 2.78, phucap: 'totruong', schedule: 'TAM', offset: 1, kipId: 'D', ghiChu: '', allow: { m3: true, pct5: false, neg5: false, ksg: false } },
+    { name: 'Lê Văn Tú', dob: '19/05/1984', chucdanh: 'CN SC điện - TT', thangbang: 'A2.N2', bac: 'CN-4/5', hesoCD: 2.78, phucap: 'totruong', schedule: 'TAM', offset: 1, kipId: 'B', ghiChu: '', allow: { m3: false, pct5: false, neg5: false, ksg: false } },
+    { name: 'Nguyễn Văn Luất', dob: '02/03/1965', chucdanh: 'KS SC điện', thangbang: 'D1.2', bac: 'KS-6/6', hesoCD: 3.25, phucap: 'none', schedule: 'TAM', offset: 1, kipId: 'B', ghiChu: '', allow: { m3: false, pct5: false, neg5: false, ksg: false } },
+    { name: 'Nguyễn Hữu Hùng', dob: '02/08/1987', chucdanh: 'CN SC điện', thangbang: 'A2.N2', bac: 'CN-4/5', hesoCD: 2.58, phucap: 'none', schedule: 'TAM', offset: 1, kipId: 'A', ghiChu: '', allow: { m3: false, pct5: false, neg5: false, ksg: false } },
+    { name: 'Nguyễn Đức Hùng', dob: '03/09/1975', chucdanh: 'KS SC điện', thangbang: 'D1.2', bac: 'KS-6/6', hesoCD: 3.25, phucap: 'none', schedule: 'TAM', offset: 1, kipId: 'D', ghiChu: '', allow: { m3: false, pct5: false, neg5: false, ksg: false } },
+    { name: 'Tạ Ngọc Bách', dob: '20/11/1976', chucdanh: 'CN SC điện', thangbang: 'A2.N2', bac: 'CN-4/5', hesoCD: 2.58, phucap: 'none', schedule: 'TAM', offset: 1, kipId: 'C', ghiChu: '', allow: { m3: false, pct5: false, neg5: false, ksg: true } },
+    { name: 'Nguyễn Quang Hiếu', dob: '30/12/1986', chucdanh: 'CN SC điện', thangbang: 'A2.N2', bac: 'CN-3/5', hesoCD: 2.58, phucap: 'none', schedule: 'TAM', offset: 1, kipId: 'C', ghiChu: '', allow: { m3: false, pct5: true, neg5: false, ksg: false } },
+    { name: 'Đặng Thế Hưng', dob: '02/06/1990', chucdanh: 'KS SC điện', thangbang: 'D1.2', bac: 'KS-2/6', hesoCD: 3.25, phucap: 'none', schedule: 'HC', offset: 0, kipId: null, ghiChu: '', allow: { m3: false, pct5: false, neg5: false, ksg: false } }
   ];
   return list.map((e, i) => Object.assign({ id: 'nv' + (i + 1) }, e));
 }
@@ -44,6 +44,7 @@ function defaultState() {
     registrations: {},
     monthlyAllowances: {},
     mealOverrides: {},
+    phepOverrides: {},
     // Tu ban co "Common theo tung thang": moi thang co 1 ban rieng cua employees/kips/bacTable/settings,
     // key dang "YYYY-MM". Cac truong employees/kips/bacTable/settings o goc object nay CHI con dung lam
     // "hat giong" mac dinh cho lan dau tien 1 thang bat ky duoc tao (xem getOrCreateMonthCommon trong server.js),
@@ -99,6 +100,7 @@ function load() {
   let migrated = false;
   if (!cache.state.monthlyAllowances) { cache.state.monthlyAllowances = {}; migrated = true; }
   if (!cache.state.mealOverrides) { cache.state.mealOverrides = {}; migrated = true; }
+  if (!cache.state.phepOverrides) { cache.state.phepOverrides = {}; migrated = true; }
   if (!cache.state.months) { cache.state.months = {}; migrated = true; }
   if (migrated) save(cache);
   return cache;

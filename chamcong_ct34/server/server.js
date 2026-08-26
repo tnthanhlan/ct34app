@@ -71,8 +71,14 @@ function fmtDate(y, m, d) { return y + '-' + String(m + 1).padStart(2, '0') + '-
 function isKS(bac) { return (bac || '').toUpperCase().startsWith('KS'); }
 function monthKey(y, m) { return `${y}-${String(m + 1).padStart(2, '0')}`; }
 // Dung sau moi lan THAY THE toan bo db.state (restore tu snapshot/backup/upload) - phong khi file
-// phuc hoi la ban rat cu, tu truoc khi co tinh nang Common-theo-thang, chua co truong "months".
-function ensureMonthsField(state) { if (!state.months) state.months = {}; return state; }
+// phuc hoi la ban rat cu, tu truoc khi co tinh nang Common-theo-thang hoac phepOverrides, chua co du truong.
+function ensureMonthsField(state) {
+  if (!state.months) state.months = {};
+  if (!state.monthlyAllowances) state.monthlyAllowances = {};
+  if (!state.mealOverrides) state.mealOverrides = {};
+  if (!state.phepOverrides) state.phepOverrides = {};
+  return state;
+}
 
 /* ---------------- Common (nhan su/Kip/bac luong/cai dat) tach rieng theo TUNG THANG ----------------
    Moi thang la 1 ban doc lap hoan toan trong state.months["YYYY-MM"]. Sua Common luc dang xem thang 9
@@ -149,7 +155,7 @@ function getEffectiveAllow(state, emp, y, m) {
   if (y != null && m != null) {
     const key = `${emp.id}_${y}-${String(m + 1).padStart(2, '0')}`;
     const override = state.monthlyAllowances[key];
-    if (override) return { m3: !!override.m3, pct5: !!override.pct5, ksg: !!emp.allow.ksg };
+    if (override) return { m3: !!override.m3, pct5: !!override.pct5, neg5: !!override.neg5, ksg: !!emp.allow.ksg };
   }
   return emp.allow;
 }
@@ -165,6 +171,7 @@ function employeePayroll(state, common, emp, y, m) {
   const hesoCDHieuLuc = Number(emp.hesoCD || 0)
     + (allow.m3 ? (ks ? 0.25 : 0.16) : 0)
     + (allow.pct5 ? (ks ? 0.16 : 0.13) : 0)
+    - (allow.neg5 ? (ks ? 0.16 : 0.13) : 0)
     + (allow.ksg ? 0.3 : 0);
   return { mucLuong, phuCap, tongLuongPhuCap: mucLuong + phuCap, hesoCDHieuLuc };
 }
@@ -538,11 +545,22 @@ app.post('/api/state/grid-clear-month', requireAuth, requireAdmin, (req, res) =>
    sai theo cau hinh moi neu nhan su doi lich sau do (07-08/2026). */
 
 app.put('/api/state/monthly-allowance', requireAuth, requireAdmin, (req, res) => {
-  const { empId, yearMonth, m3, pct5 } = req.body || {};
+  const { empId, yearMonth, m3, pct5, neg5 } = req.body || {};
   if (!empId || !yearMonth) return res.status(400).json({ error: 'Thiếu empId hoặc yearMonth.' });
   const db = getDb();
   const key = `${empId}_${yearMonth}`;
-  db.state.monthlyAllowances[key] = { m3: !!m3, pct5: !!pct5 };
+  db.state.monthlyAllowances[key] = { m3: !!m3, pct5: !!pct5, neg5: !!neg5 };
+  persist(); setImmediate(backupStateToShare);
+  res.json({ ok: true });
+});
+
+app.put('/api/state/phep-override', requireAuth, requireAdmin, (req, res) => {
+  const { empId, yearMonth, soNgay } = req.body || {};
+  if (!empId || !yearMonth) return res.status(400).json({ error: 'Thiếu empId hoặc yearMonth.' });
+  const db = getDb();
+  const key = `${empId}_${yearMonth}`;
+  db.state.phepOverrides[key] = (soNgay === '' || soNgay === null || soNgay === undefined) ? null : Number(soNgay);
+  if (db.state.phepOverrides[key] === null) delete db.state.phepOverrides[key];
   persist(); setImmediate(backupStateToShare);
   res.json({ ok: true });
 });
