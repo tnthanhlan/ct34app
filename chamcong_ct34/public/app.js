@@ -91,7 +91,7 @@ function getEffectiveAllow(emp, y, m){
   if(y!=null && m!=null){
     const key = `${emp.id}_${y}-${String(m+1).padStart(2,'0')}`;
     const override = state.monthlyAllowances[key];
-    if(override) return { m3: !!override.m3, pct5: !!override.pct5, ksg: !!emp.allow.ksg };
+    if(override) return { m3: !!override.m3, pct5: !!override.pct5, neg5: !!override.neg5, ksg: !!emp.allow.ksg };
   }
   return emp.allow;
 }
@@ -106,6 +106,7 @@ function employeePayroll(common, emp, y, m){
   const hesoCDHieuLuc = Number(emp.hesoCD||0)
     + (allow.m3 ? (ks?0.25:0.16) : 0)
     + (allow.pct5 ? (ks?0.16:0.13) : 0)
+    - (allow.neg5 ? (ks?0.16:0.13) : 0)
     + (allow.ksg ? 0.3 : 0);
   return { mucLuong, phuCap, tongLuongPhuCap: mucLuong+phuCap, hesoCDHieuLuc };
 }
@@ -303,7 +304,8 @@ function renderCommon(){
       <td><input type="number" step="0.01" data-f="hesoCD" value="${emp.hesoCD}"></td>
       <td>
         <div class="chk-row"><input type="checkbox" data-f="m3" ${emp.allow.m3?'checked':''}> M3 (${ks?'0.25':'0.16'})</div>
-        <div class="chk-row"><input type="checkbox" data-f="pct5" ${emp.allow.pct5?'checked':''}> 5% (${ks?'0.16':'0.13'})</div>
+        <div class="chk-row"><input type="checkbox" data-f="pct5" ${emp.allow.pct5?'checked':''}> +5% (${ks?'0.16':'0.13'})</div>
+        <div class="chk-row"><input type="checkbox" data-f="neg5" ${emp.allow.neg5?'checked':''}> -5% (-${ks?'0.16':'0.13'})</div>
         <div class="chk-row"><input type="checkbox" data-f="ksg" ${emp.allow.ksg?'checked':''}> KSG (+0.3)</div>
       </td>
       <td>
@@ -319,13 +321,18 @@ function renderCommon(){
           ${common.kips.map(k=>`<option value="${k.id}" ${emp.kipId===k.id?'selected':''}>${escapeHtml(k.label||k.id)}</option>`).join('')}
         </select>
       </td>
-      <td><input type="number" min="0" max="7" data-f="offset" value="${emp.offset||0}" ${(emp.schedule==='HC'||emp.kipId)?'disabled':''} style="width:50px"></td>
+      <td><input type="text" data-f="ghiChu" value="${escapeHtml(emp.ghiChu||'')}" placeholder="Lý do ±5%, ghi chú khác..." style="width:100%"></td>
     `;
     tr.querySelectorAll('[data-f]').forEach(el=>{
       el.addEventListener('change', async ()=>{
         const f = el.dataset.f;
         const freshEmp = common.employees.find(x=>x.id===emp.id) || emp;
-        if(['m3','pct5','ksg'].includes(f)){ freshEmp.allow[f]=el.checked; }
+        if(['m3','pct5','neg5','ksg'].includes(f)){
+          freshEmp.allow[f]=el.checked;
+          // +5% va -5% loai tru nhau - bat 1 ben thi tu tat ben kia, tranh cong tru lan nhau vo nghia.
+          if(f==='pct5' && el.checked) freshEmp.allow.neg5=false;
+          if(f==='neg5' && el.checked) freshEmp.allow.pct5=false;
+        }
         else if(f==='hesoCD'){ freshEmp[f]=parseFloat(el.value); }
         else if(f==='offset'){ freshEmp[f]=Number(el.value); }
         else if(f==='kipId'){ freshEmp[f]=el.value || null; }
@@ -1114,12 +1121,20 @@ function renderMeal(){
 /* ================= Tong hop nam tab ================= */
 const THN_MONTH_LABELS = ['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'];
 
-async function saveMonthlyAllowance(empId, year, month, m3, pct5){
+async function saveMonthlyAllowance(empId, year, month, m3, pct5, neg5){
   const yearMonth = `${year}-${String(month+1).padStart(2,'0')}`;
   const key = `${empId}_${yearMonth}`;
-  state.monthlyAllowances[key] = {m3, pct5};
+  state.monthlyAllowances[key] = {m3, pct5, neg5};
   try{
-    await api('PUT', '/api/state/monthly-allowance', {empId, yearMonth, m3, pct5});
+    await api('PUT', '/api/state/monthly-allowance', {empId, yearMonth, m3, pct5, neg5});
+  }catch(e){ alert('Không lưu được: '+e.message); }
+}
+async function savePhepOverride(empId, year, month, soNgay){
+  const yearMonth = `${year}-${String(month+1).padStart(2,'0')}`;
+  const key = `${empId}_${yearMonth}`;
+  if(soNgay===null) delete state.phepOverrides[key]; else state.phepOverrides[key] = soNgay;
+  try{
+    await api('PUT', '/api/state/phep-override', {empId, yearMonth, soNgay});
   }catch(e){ alert('Không lưu được: '+e.message); }
 }
 
@@ -1153,10 +1168,10 @@ async function renderTongHopNam(){
   row1.appendChild(nameTh);
   for(let m=0; m<12; m++){
     const th = document.createElement('th');
-    th.colSpan = 3;
+    th.colSpan = 4;
     th.textContent = THN_MONTH_LABELS[m];
     row1.appendChild(th);
-    ['F','M3','5%'].forEach(lbl=>{
+    ['F','M3','+5%','-5%'].forEach(lbl=>{
       const th2 = document.createElement('th');
       th2.textContent = lbl;
       th2.style.fontSize = '10px';
@@ -1189,30 +1204,57 @@ async function renderTongHopNam(){
           if(computeFinalCode(c, emp, year, m, d) === 'F') fCount++;
         }
       }
-      totalF += fCount;
       const key = `${empId}_${year}-${String(m+1).padStart(2,'0')}`;
       const override = state.monthlyAllowances[key];
       const m3 = emp ? (override ? override.m3 : emp.allow.m3) : false;
       const pct5 = emp ? (override ? override.pct5 : emp.allow.pct5) : false;
+      const neg5 = emp ? (override ? override.neg5 : emp.allow.neg5) : false;
+
+      const phepOv = state.phepOverrides[key];
+      const fEff = (phepOv===null || phepOv===undefined) ? fCount : phepOv;
+      totalF += Number(fEff)||0;
 
       const tdF = document.createElement('td');
-      tdF.textContent = emp && fCount ? fCount : '';
-      tdF.style.textAlign = 'center';
-      tdF.style.color = fCount ? 'var(--ink)' : 'var(--ink-soft)';
+      const fInp = document.createElement('input');
+      fInp.type = 'number'; fInp.min = '0';
+      fInp.style.width = '46px'; fInp.style.textAlign = 'center';
+      fInp.disabled = !emp;
+      fInp.value = fEff;
+      if(phepOv===null || phepOv===undefined) fInp.style.color = 'var(--ink-soft)';
+      else fInp.title = `Đã sửa tay (tự tính từ Bảng Công là ${fCount})`;
+      fInp.addEventListener('change', async ()=>{
+        const v = fInp.value==='' ? null : Number(fInp.value);
+        // Neu sua ve dung bang so tu tinh thi coi nhu bo ghi de, quay lai tu tinh cho lan sau.
+        await savePhepOverride(empId, year, m, (v===fCount ? null : v));
+        renderTongHopNam();
+      });
       if(!emp) tdF.title = 'Nhân sự này chưa/không có trong Common của tháng này';
+      tdF.appendChild(fInp);
       tr.appendChild(tdF);
 
       const tdM3 = document.createElement('td');
       const chkM3 = document.createElement('input');
       chkM3.type = 'checkbox'; chkM3.checked = !!m3; chkM3.disabled = !emp;
-      chkM3.addEventListener('change', ()=>saveMonthlyAllowance(empId, year, m, chkM3.checked, chk5.checked));
+      chkM3.addEventListener('change', ()=>saveMonthlyAllowance(empId, year, m, chkM3.checked, chk5.checked, chkNeg5.checked));
       tdM3.style.textAlign='center'; tdM3.appendChild(chkM3); tr.appendChild(tdM3);
 
       const tdPct5 = document.createElement('td');
       const chk5 = document.createElement('input');
       chk5.type = 'checkbox'; chk5.checked = !!pct5; chk5.disabled = !emp;
-      chk5.addEventListener('change', ()=>saveMonthlyAllowance(empId, year, m, chkM3.checked, chk5.checked));
+      chk5.addEventListener('change', ()=>{
+        if(chk5.checked){ chkNeg5.checked = false; }
+        saveMonthlyAllowance(empId, year, m, chkM3.checked, chk5.checked, chkNeg5.checked);
+      });
       tdPct5.style.textAlign='center'; tdPct5.appendChild(chk5); tr.appendChild(tdPct5);
+
+      const tdNeg5 = document.createElement('td');
+      const chkNeg5 = document.createElement('input');
+      chkNeg5.type = 'checkbox'; chkNeg5.checked = !!neg5; chkNeg5.disabled = !emp;
+      chkNeg5.addEventListener('change', ()=>{
+        if(chkNeg5.checked){ chk5.checked = false; }
+        saveMonthlyAllowance(empId, year, m, chkM3.checked, chk5.checked, chkNeg5.checked);
+      });
+      tdNeg5.style.textAlign='center'; tdNeg5.appendChild(chkNeg5); tr.appendChild(tdNeg5);
     }
     const tdTotal = document.createElement('td');
     tdTotal.textContent = totalF;
@@ -1252,6 +1294,7 @@ async function bootApp(){
   }catch(e){
     return; // showLogin() da duoc goi ben trong api() neu 401
   }
+  if(!state.phepOverrides) state.phepOverrides = {}; // phong ban server cu hon (chua co truong nay)
   initMonthYearControls();
   await refreshActiveCommon();
   renderCommon();

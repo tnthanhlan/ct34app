@@ -81,10 +81,10 @@
         <th style="width:155px">Phụ cấp trách nhiệm</th>
         <th style="width:95px">Tổng lương + PC</th>
         <th style="width:55px">HS chức danh</th>
-        <th style="width:170px">Phụ cấp thêm (M3 / 5% / KSG)</th>
+        <th style="width:190px">Phụ cấp thêm (M3 / +5% / -5% / KSG)</th>
         <th style="width:155px">Loại lịch</th>
         <th style="width:130px">Thuộc kíp</th>
-        <th style="width:48px">Lệch pha</th>
+        <th style="width:150px">Ghi chú</th>
       </tr>
     </thead>
     <tbody id="commonBody"></tbody>
@@ -107,8 +107,8 @@
   <div class="note">
     · Mức lương = Mức lương tối thiểu vùng × Hệ số (tra theo Bậc).<br>
     · Phụ cấp trách nhiệm: Trưởng ca dùng hệ số T.ca, Tổ trưởng dùng hệ số T.trưởng, còn lại không có.<br>
-    · Hệ số lương chức danh + phụ cấp thêm (M3 kỹ sư 0.25 / công nhân 0.16, phụ cấp 5% kỹ sư 0.16 / công nhân 0.13, kỹ sư giỏi +0.3) — bật ở cột cuối, hệ thống tự cộng đúng theo bạn là KS hay CN dựa vào Bậc.<br>
-    · "Ngày gốc chu kỳ ca" + "Độ lệch pha" của từng người/kíp cùng nhau quyết định chu kỳ 8 ngày chạy liên tục qua các tháng.<br>
+    · Hệ số lương chức danh + phụ cấp thêm (M3 kỹ sư +0.25 / công nhân +0.16, phụ cấp +5% kỹ sư +0.16 / công nhân +0.13, điều chỉnh -5% trừ ngược lại đúng mức đó, kỹ sư giỏi +0.3) — bật ở cột "Phụ cấp thêm", hệ thống tự cộng/trừ đúng theo bạn là KS hay CN dựa vào Bậc. +5% và -5% loại trừ nhau (bật cái này tự tắt cái kia). Dùng cột "Ghi chú" để ghi lý do (vd: lý do trừ 5%, hoặc ghi chú khác).<br>
+    · "Ngày gốc chu kỳ ca" + "Độ lệch pha" của từng Kíp (bảng "Kíp mẫu" bên dưới) cùng nhau quyết định chu kỳ 8 ngày chạy liên tục qua các tháng.<br>
     · Dữ liệu ở đây lưu trên server, dùng chung cho mọi thiết bị đăng nhập — chỉ Admin mới sửa được.
   </div>
 
@@ -178,7 +178,7 @@
     <label>Năm</label><select id="selYearTHN"></select>
   </div>
   <div class="note" style="margin-bottom:10px">
-    Theo dõi tổng số công <b>phép (F)</b> đã nghỉ từng tháng và luỹ kế từ đầu năm, cùng trạng thái phụ cấp <b>M3</b> / <b>5%</b> áp dụng riêng cho từng tháng (khác với mặc định ở tab Common — ở đây có thể bật/tắt riêng theo từng tháng nếu tháng đó có thay đổi phụ cấp). Số liệu Phép (F) tự tính từ dữ liệu Bảng Công, cập nhật ngay khi có thay đổi.
+    Theo dõi tổng số công <b>phép (F)</b> đã nghỉ từng tháng và luỹ kế từ đầu năm, cùng trạng thái phụ cấp <b>M3</b> / <b>+5%</b> / <b>-5%</b> áp dụng riêng cho từng tháng (khác với mặc định ở tab Common — ở đây có thể bật/tắt riêng theo từng tháng nếu tháng đó có thay đổi phụ cấp; +5% và -5% loại trừ nhau). Số Phép (F) mặc định tự tính từ dữ liệu Bảng Công (chữ màu nhạt) — Admin có thể bấm sửa tay trực tiếp trong ô để ghi đè số khác nếu cần (chữ đậm lên); sửa lại đúng bằng số tự tính thì tự bỏ ghi đè.
   </div>
   <div class="cc-wrap"><table id="thnTable"></table></div>
 </div>
