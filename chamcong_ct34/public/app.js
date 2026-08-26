@@ -39,30 +39,34 @@ function fmtDate(y,m,d){ return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).
 function isKS(bac){ return (bac||'').toUpperCase().startsWith('KS'); }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-function daysSinceAnchor(y,m,d){
-  const anchor = new Date((state.settings.anchorDate||'2026-07-01')+'T00:00:00');
+/* Cac ham tinh toan ben duoi deu nhan "common" (Common CUA DUNG THANG dang xem: employees/kips/bacTable/
+   settings) lam tham so dau tien - vi tu ban co Common rieng theo tung thang, khong con 1 cau hinh
+   toan cuc dung chung nua. Xem bien module-level `common` (thang dang active tren giao dien) va
+   `commonCache`/`getCommon()` (dung khi can nhieu thang cung luc, vd tab Tong hop nam). */
+function daysSinceAnchor(common, y,m,d){
+  const anchor = new Date((common.settings.anchorDate||'2026-07-01')+'T00:00:00');
   const dt = new Date(y,m,d);
   return Math.round((dt-anchor)/86400000);
 }
-function resolvedOffset(emp){
+function resolvedOffset(common, emp){
   if(emp.kipId){
-    const k = state.kips.find(x=>x.id===emp.kipId);
+    const k = common.kips.find(x=>x.id===emp.kipId);
     if(k) return Number(k.offset||0);
   }
   return Number(emp.offset||0);
 }
-function computeAutoCode(emp, y, m, d){
+function computeAutoCode(common, emp, y, m, d){
   if(emp.schedule==='HC'){
     const dow = new Date(y,m,d).getDay();
     return (dow===0||dow===6) ? '' : 'X';
   }
-  const idx = mod8(daysSinceAnchor(y,m,d) + resolvedOffset(emp));
+  const idx = mod8(daysSinceAnchor(common, y,m,d) + resolvedOffset(common, emp));
   // Nguoi thuoc 1 kip cu the tinh thang K1/K2/KD (giong dong Kip mau phia tren), khong con dung X/XD nua.
   // Chi nguoi Tam-xoay-ca doc lap (khong gan kip nao) moi dung X/XD.
   const useShiftCodes = (emp.schedule==='CA') || (emp.schedule==='TAM' && emp.kipId);
   return (useShiftCodes ? CYCLE_CA : CYCLE_TAM)[idx];
 }
-function computeFinalCode(emp, y, m, d){
+function computeFinalCode(common, emp, y, m, d){
   const dateStr = fmtDate(y,m,d);
   const manual = state.grid[emp.id] && state.grid[emp.id][dateStr];
   if(manual) return manual;
@@ -75,13 +79,13 @@ function computeFinalCode(emp, y, m, d){
         if(pair[0]===emp.id) partnerId = pair[1];
         else if(pair[1]===emp.id) partnerId = pair[0];
         if(partnerId){
-          const partner = state.employees.find(e=>e.id===partnerId);
-          if(partner) return computeAutoCode(partner, y, m, d);
+          const partner = common.employees.find(e=>e.id===partnerId);
+          if(partner) return computeAutoCode(common, partner, y, m, d);
         }
       }
     }
   }
-  return computeAutoCode(emp, y, m, d);
+  return computeAutoCode(common, emp, y, m, d);
 }
 function getEffectiveAllow(emp, y, m){
   if(y!=null && m!=null){
@@ -91,12 +95,12 @@ function getEffectiveAllow(emp, y, m){
   }
   return emp.allow;
 }
-function employeePayroll(emp, y, m){
-  const bacEntry = state.bacTable.find(b=>b[0]===emp.bac);
+function employeePayroll(common, emp, y, m){
+  const bacEntry = common.bacTable.find(b=>b[0]===emp.bac);
   const heso = bacEntry ? bacEntry[1] : 0;
-  const mucLuong = state.settings.mucLuongToiThieu * heso;
-  const phuCap = emp.phucap==='catruong' ? state.settings.mucLuongToiThieu*state.settings.heSoTca
-               : emp.phucap==='totruong' ? state.settings.mucLuongToiThieu*state.settings.heSoTtruong : 0;
+  const mucLuong = common.settings.mucLuongToiThieu * heso;
+  const phuCap = emp.phucap==='catruong' ? common.settings.mucLuongToiThieu*common.settings.heSoTca
+               : emp.phucap==='totruong' ? common.settings.mucLuongToiThieu*common.settings.heSoTtruong : 0;
   const ks = isKS(emp.bac);
   const allow = getEffectiveAllow(emp, y, m);
   const hesoCDHieuLuc = Number(emp.hesoCD||0)
@@ -105,9 +109,9 @@ function employeePayroll(emp, y, m){
     + (allow.ksg ? 0.3 : 0);
   return { mucLuong, phuCap, tongLuongPhuCap: mucLuong+phuCap, hesoCDHieuLuc };
 }
-function empGroupColor(emp){
+function empGroupColor(common, emp){
   if(emp.kipId){
-    const k = state.kips.find(x=>x.id===emp.kipId);
+    const k = common.kips.find(x=>x.id===emp.kipId);
     if(k && k.color) return k.color;
   }
   return null;
@@ -136,6 +140,26 @@ let state = null;
 let currentRole = 'user';
 let currentEmail = '';
 let viewYear, viewMonth;
+// "common" = Common (nhan su/Kip/bac luong/cai dat) CUA DUNG THANG dang chon tren giao dien
+// (viewYear/viewMonth) - moi thang mot ban rieng, doc lap hoan toan, lay tu /api/month/:year/:month.
+let common = null;
+// Cache theo "y-m" phong khi can nhieu thang cung luc (vd tab Tong hop nam quet ca 12 thang).
+let commonCache = {};
+async function getCommon(y, m){
+  const key = y+'-'+(m+1);
+  if(!commonCache[key]) commonCache[key] = await api('GET', `/api/month/${y}/${m+1}`);
+  return commonCache[key];
+}
+async function refreshActiveCommon(){
+  common = await getCommon(viewYear, viewMonth);
+  return common;
+}
+// Sau khi sua Common (them/xoa/sua nhan su, Kip, bac luong...), goi ham nay de: xoa cache thang hien
+// tai (vi vua doi), roi tai lai "common" cho dung voi thay doi moi nhat.
+async function invalidateActiveCommon(){
+  delete commonCache[viewYear+'-'+(viewMonth+1)];
+  await refreshActiveCommon();
+}
 
 /* ================= Dang nhap ================= */
 function showLogin(){
@@ -207,10 +231,12 @@ async function checkSession(){
 function applyRolePermissions(){
   const isUser = (currentRole !== 'admin');
   document.querySelectorAll('#tab-common input, #tab-common select, #tab-common button').forEach(el=>{ el.disabled = isUser; });
+  // Bo chon thang/nam cua Common la de XEM, khong phai sua du lieu - User van duoc doi thang de xem.
+  ['selMonthCommon','selYearCommon'].forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = false; });
   document.querySelectorAll('#tab-chamcong select.daysel').forEach(el=>{ el.disabled = isUser; });
   document.querySelectorAll('#tab-tonghopnam input').forEach(el=>{ el.disabled = isUser; });
   document.querySelectorAll('#tab-anca input').forEach(el=>{ el.disabled = isUser; });
-  ['btnClear','btnExportCSV','btnLockMonth'].forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = isUser; });
+  ['btnClear','btnExportCSV'].forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = isUser; });
   const note = document.getElementById('commonRoleNote');
   if(note) note.classList.toggle('hidden', !isUser);
 }
@@ -223,6 +249,7 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
     ['common','chamcong','dangky','tonghopnam','anca','ghichu'].forEach(t=>{
       document.getElementById('tab-'+t).classList.toggle('hidden', btn.dataset.tab!==t);
     });
+    if(btn.dataset.tab==='common') renderCommon();
     if(btn.dataset.tab==='chamcong') renderCalendar();
     if(btn.dataset.tab==='dangky') renderDangKy();
     if(btn.dataset.tab==='tonghopnam') renderTongHopNam();
@@ -231,23 +258,28 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
 });
 
 /* ================= Common tab ================= */
+// Common gio la CUA RIENG TUNG THANG - moi lan doi thang o thanh cong cu (selMonthCommon/selYearCommon,
+// dung chung voi cac tab khac qua viewYear/viewMonth) se tai lai dung ban cua thang do.
 function bacOptionsHtml(selected){
-  return state.bacTable.map(([b])=>`<option value="${b}" ${b===selected?'selected':''}>${b}</option>`).join('');
+  return common.bacTable.map(([b])=>`<option value="${b}" ${b===selected?'selected':''}>${b}</option>`).join('');
 }
 function renderCommon(){
-  document.getElementById('mucLuongToiThieu').value = state.settings.mucLuongToiThieu;
-  document.getElementById('heSoTca').value = state.settings.heSoTca;
-  document.getElementById('heSoTtruong').value = state.settings.heSoTtruong;
-  document.getElementById('anchorDate').value = state.settings.anchorDate;
+  if(!common) return;
+  const label = document.getElementById('commonMonthLabel');
+  if(label) label.textContent = `Đang xem/sửa Common của tháng ${viewMonth+1}/${viewYear} — thay đổi ở đây CHỈ áp dụng cho đúng tháng này, không ảnh hưởng tháng khác.`;
+  document.getElementById('mucLuongToiThieu').value = common.settings.mucLuongToiThieu;
+  document.getElementById('heSoTca').value = common.settings.heSoTca;
+  document.getElementById('heSoTtruong').value = common.settings.heSoTtruong;
+  document.getElementById('anchorDate').value = common.settings.anchorDate;
 
   const body = document.getElementById('commonBody');
   body.innerHTML = '';
-  state.employees.forEach((emp, idx)=>{
-    const bacEntry = state.bacTable.find(b=>b[0]===emp.bac);
+  common.employees.forEach((emp, idx)=>{
+    const bacEntry = common.bacTable.find(b=>b[0]===emp.bac);
     const heso = bacEntry ? bacEntry[1] : 0;
-    const mucLuong = state.settings.mucLuongToiThieu * heso;
-    const phuCap = emp.phucap==='catruong' ? state.settings.mucLuongToiThieu*state.settings.heSoTca
-                 : emp.phucap==='totruong' ? state.settings.mucLuongToiThieu*state.settings.heSoTtruong : 0;
+    const mucLuong = common.settings.mucLuongToiThieu * heso;
+    const phuCap = emp.phucap==='catruong' ? common.settings.mucLuongToiThieu*common.settings.heSoTca
+                 : emp.phucap==='totruong' ? common.settings.mucLuongToiThieu*common.settings.heSoTtruong : 0;
     const ks = isKS(emp.bac);
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -284,7 +316,7 @@ function renderCommon(){
       <td>
         <select data-f="kipId" ${emp.schedule==='HC'?'disabled':''}>
           <option value="" ${!emp.kipId?'selected':''}>— Không —</option>
-          ${state.kips.map(k=>`<option value="${k.id}" ${emp.kipId===k.id?'selected':''}>${escapeHtml(k.label||k.id)}</option>`).join('')}
+          ${common.kips.map(k=>`<option value="${k.id}" ${emp.kipId===k.id?'selected':''}>${escapeHtml(k.label||k.id)}</option>`).join('')}
         </select>
       </td>
       <td><input type="number" min="0" max="7" data-f="offset" value="${emp.offset||0}" ${(emp.schedule==='HC'||emp.kipId)?'disabled':''} style="width:50px"></td>
@@ -292,29 +324,13 @@ function renderCommon(){
     tr.querySelectorAll('[data-f]').forEach(el=>{
       el.addEventListener('change', async ()=>{
         const f = el.dataset.f;
-        const isRisky = ['schedule','kipId','offset'].includes(f);
-        if(isRisky){
-          const gaps = findUnlockedPastMonths(emp); // dung cau hinh CU (chua doi) de kiem tra
-          if(gaps.length){
-            const list = gaps.map(g=>`Tháng ${g.m+1}/${g.y}`).join(', ');
-            const proceed = confirm(
-              `Đổi mục này sẽ ảnh hưởng tới các tháng ĐÃ QUA nhưng CHƯA được chốt: ${list}.\n\n`+
-              `Bấm OK để hệ thống TỰ ĐỘNG CHỐT các tháng đó bằng đúng dữ liệu hiện tại (trước khi đổi) rồi mới áp dụng thay đổi này — an toàn, không ảnh hưởng ngược lịch sử.\n`+
-              `Bấm Cancel để HUỶ thay đổi này (không đổi gì cả).`
-            );
-            if(!proceed){ renderCommon(); return; }
-            try{
-              for(const g of gaps){ await api('POST', '/api/state/lock-month', {year: g.y, month: g.m+1}); }
-              state = await api('GET', '/api/state');
-            }catch(e){ alert('Không chốt được các tháng cũ, đã huỷ thay đổi để an toàn: '+e.message); renderCommon(); return; }
-          }
-        }
-        const freshEmp = state.employees.find(x=>x.id===emp.id) || emp;
+        const freshEmp = common.employees.find(x=>x.id===emp.id) || emp;
         if(['m3','pct5','ksg'].includes(f)){ freshEmp.allow[f]=el.checked; }
         else if(f==='hesoCD'){ freshEmp[f]=parseFloat(el.value); }
         else if(f==='offset'){ freshEmp[f]=Number(el.value); }
         else if(f==='kipId'){ freshEmp[f]=el.value || null; }
         else { freshEmp[f]=el.value; }
+        // Chi ghi vao dung thang dang xem (viewYear/viewMonth) - khong dung cham gi thang khac.
         await saveEmployees();
         renderCommon();
       });
@@ -325,55 +341,31 @@ function renderCommon(){
 }
 
 async function saveSettings(){
-  try{ await api('PUT', '/api/state/settings', state.settings); }
+  try{ await api('PUT', `/api/month/${viewYear}/${viewMonth+1}/settings`, common.settings); }
   catch(e){ alert('Không lưu được: '+e.message); }
 }
-function findUnlockedPastMonths(emp){
-  const today = new Date();
-  const curY = today.getFullYear(), curM = today.getMonth();
-  let y, m;
-  try{
-    const anchor = new Date((state.settings.anchorDate||'2026-07-01')+'T00:00:00');
-    y = anchor.getFullYear(); m = anchor.getMonth();
-  }catch(e){ y = curY; m = curM; }
-  const gaps = [];
-  let guard = 0;
-  while((y < curY || (y===curY && m < curM)) && guard < 60){
-    guard++;
-    const nDays = daysInMonth(y, m);
-    let hasGap = false;
-    for(let d=1; d<=nDays; d++){
-      const dateStr = fmtDate(y, m, d);
-      const code = computeFinalCode(emp, y, m, d);
-      if(code && !(state.grid[emp.id] && state.grid[emp.id][dateStr])){ hasGap = true; break; }
-    }
-    if(hasGap) gaps.push({y, m});
-    m++; if(m>11){ m=0; y++; }
-  }
-  return gaps;
-}
 async function saveEmployees(){
-  try{ await api('PUT', '/api/state/employees', state.employees); }
+  try{ await api('PUT', `/api/month/${viewYear}/${viewMonth+1}/employees`, common.employees); }
   catch(e){ alert('Không lưu được: '+e.message); }
 }
 async function saveBacTable(){
-  try{ await api('PUT', '/api/state/bactable', state.bacTable); }
+  try{ await api('PUT', `/api/month/${viewYear}/${viewMonth+1}/bactable`, common.bacTable); }
   catch(e){ alert('Không lưu được: '+e.message); }
 }
 async function saveKips(){
-  try{ await api('PUT', '/api/state/kips', state.kips); }
+  try{ await api('PUT', `/api/month/${viewYear}/${viewMonth+1}/kips`, common.kips); }
   catch(e){ alert('Không lưu được: '+e.message); }
 }
 
-document.getElementById('mucLuongToiThieu').addEventListener('change', async e=>{ state.settings.mucLuongToiThieu=Number(e.target.value); await saveSettings(); renderCommon(); });
-document.getElementById('heSoTca').addEventListener('change', async e=>{ state.settings.heSoTca=parseFloat(e.target.value); await saveSettings(); renderCommon(); });
-document.getElementById('heSoTtruong').addEventListener('change', async e=>{ state.settings.heSoTtruong=parseFloat(e.target.value); await saveSettings(); renderCommon(); });
-document.getElementById('anchorDate').addEventListener('change', async e=>{ state.settings.anchorDate=e.target.value; await saveSettings(); renderCalendar(); renderDangKy(); });
+document.getElementById('mucLuongToiThieu').addEventListener('change', async e=>{ common.settings.mucLuongToiThieu=Number(e.target.value); await saveSettings(); renderCommon(); });
+document.getElementById('heSoTca').addEventListener('change', async e=>{ common.settings.heSoTca=parseFloat(e.target.value); await saveSettings(); renderCommon(); });
+document.getElementById('heSoTtruong').addEventListener('change', async e=>{ common.settings.heSoTtruong=parseFloat(e.target.value); await saveSettings(); renderCommon(); });
+document.getElementById('anchorDate').addEventListener('change', async e=>{ common.settings.anchorDate=e.target.value; await saveSettings(); renderCalendar(); renderDangKy(); });
 
 function renderBacTable(){
   const body = document.getElementById('bacBody');
   body.innerHTML = '';
-  state.bacTable.forEach((row, i)=>{
+  common.bacTable.forEach((row, i)=>{
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><input type="text" value="${escapeHtml(row[0])}" data-i="${i}" data-f="b" style="width:90px"></td>
@@ -385,22 +377,22 @@ function renderBacTable(){
   body.querySelectorAll('input[data-f]').forEach(el=>{
     el.addEventListener('change', async ()=>{
       const i = Number(el.dataset.i);
-      if(el.dataset.f==='b') state.bacTable[i][0]=el.value;
-      else state.bacTable[i][1]=parseFloat(el.value);
+      if(el.dataset.f==='b') common.bacTable[i][0]=el.value;
+      else common.bacTable[i][1]=parseFloat(el.value);
       await saveBacTable();
       renderBacTable(); renderCommon();
     });
   });
   body.querySelectorAll('[data-del]').forEach(el=>{
     el.addEventListener('click', async ()=>{
-      state.bacTable.splice(Number(el.dataset.del),1);
+      common.bacTable.splice(Number(el.dataset.del),1);
       await saveBacTable();
       renderBacTable(); renderCommon();
     });
   });
 }
 document.getElementById('btnAddBac').addEventListener('click', async ()=>{
-  state.bacTable.push(['Bậc mới', 1.0]);
+  common.bacTable.push(['Bậc mới', 1.0]);
   await saveBacTable();
   renderBacTable();
 });
@@ -408,8 +400,8 @@ document.getElementById('btnAddBac').addEventListener('click', async ()=>{
 function renderKipTable(){
   const body = document.getElementById('kipBody');
   body.innerHTML = '';
-  state.kips.forEach((kip,i)=>{
-    const idx0 = mod8(daysSinceAnchor(viewYear, viewMonth, 1) + Number(kip.offset||0));
+  common.kips.forEach((kip,i)=>{
+    const idx0 = mod8(daysSinceAnchor(common, viewYear, viewMonth, 1) + Number(kip.offset||0));
     const codeDay1 = CYCLE_CA[idx0] || 'nghỉ';
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -424,23 +416,23 @@ function renderKipTable(){
   body.querySelectorAll('input[data-f]').forEach(el=>{
     el.addEventListener('change', async ()=>{
       const i = Number(el.dataset.i);
-      if(el.dataset.f==='label') state.kips[i].label = el.value;
-      else if(el.dataset.f==='color') state.kips[i].color = el.value;
-      else state.kips[i].offset = Number(el.value);
+      if(el.dataset.f==='label') common.kips[i].label = el.value;
+      else if(el.dataset.f==='color') common.kips[i].color = el.value;
+      else common.kips[i].offset = Number(el.value);
       await saveKips();
       renderKipTable(); renderCalendar(); renderDangKy();
     });
   });
   body.querySelectorAll('[data-del]').forEach(el=>{
     el.addEventListener('click', async ()=>{
-      state.kips.splice(Number(el.dataset.del),1);
+      common.kips.splice(Number(el.dataset.del),1);
       await saveKips();
       renderKipTable();
     });
   });
 }
 document.getElementById('btnAddKip').addEventListener('click', async ()=>{
-  state.kips.push({id:'K'+(state.kips.length+1), label:'Kíp mới', offset:0, color:'#EEF3F6'});
+  common.kips.push({id:'K'+(common.kips.length+1), label:'Kíp mới', offset:0, color:'#EEF3F6'});
   await saveKips();
   renderKipTable();
 });
@@ -577,7 +569,8 @@ document.getElementById('btnRefreshShareBackups').addEventListener('click', rend
 function initMonthYearControls(){
   const selMonth = document.getElementById('selMonth');
   const selMonthDK = document.getElementById('selMonthDK');
-  [selMonth, selMonthDK].forEach(sel=>{
+  const selMonthCommon = document.getElementById('selMonthCommon');
+  [selMonth, selMonthDK, selMonthCommon].forEach(sel=>{
     sel.innerHTML = '';
     for(let m=0;m<12;m++){
       const opt = document.createElement('option'); opt.value=m; opt.textContent='Tháng '+(m+1); sel.appendChild(opt);
@@ -585,19 +578,29 @@ function initMonthYearControls(){
   });
   const now = new Date();
   viewYear = now.getFullYear(); viewMonth = now.getMonth();
-  selMonth.value = viewMonth; selMonthDK.value = viewMonth;
+  selMonth.value = viewMonth; selMonthDK.value = viewMonth; selMonthCommon.value = viewMonth;
   document.getElementById('selYear').value = viewYear;
   document.getElementById('selYearDK').value = viewYear;
-  function onMonthYearChange(){
-    selMonth.value = viewMonth; selMonthDK.value = viewMonth;
+  document.getElementById('selYearCommon').value = viewYear;
+  // "common" (Common cua dung thang dang chon) la nguon du lieu dung chung cho ca 4 tab Common/Bang Cong/
+  // Cham cong/An ca - moi lan doi thang o BAT KY tab nao trong so nay deu phai tai lai dung "common" roi
+  // moi ve lai, khong thi cac tab con lai se hien du lieu cua thang cu.
+  async function onMonthYearChange(){
+    selMonth.value = viewMonth; selMonthDK.value = viewMonth; selMonthCommon.value = viewMonth;
     document.getElementById('selYear').value = viewYear;
     document.getElementById('selYearDK').value = viewYear;
-    renderCalendar(); renderDangKy();
+    document.getElementById('selYearCommon').value = viewYear;
+    await refreshActiveCommon();
+    renderCommon(); renderCalendar(); renderDangKy();
+    const anCaTab = document.getElementById('tab-anca');
+    if(anCaTab && !anCaTab.classList.contains('hidden')) renderMeal();
   }
   selMonth.addEventListener('change', ()=>{ viewMonth=Number(selMonth.value); onMonthYearChange(); });
   selMonthDK.addEventListener('change', ()=>{ viewMonth=Number(selMonthDK.value); onMonthYearChange(); });
+  selMonthCommon.addEventListener('change', ()=>{ viewMonth=Number(selMonthCommon.value); onMonthYearChange(); });
   document.getElementById('selYear').addEventListener('change', e=>{ viewYear=Number(e.target.value); onMonthYearChange(); });
   document.getElementById('selYearDK').addEventListener('change', e=>{ viewYear=Number(e.target.value); onMonthYearChange(); });
+  document.getElementById('selYearCommon').addEventListener('change', e=>{ viewYear=Number(e.target.value); onMonthYearChange(); });
 
   const selYearTHN = document.getElementById('selYearTHN');
   selYearTHN.innerHTML = '';
@@ -644,7 +647,7 @@ function kipRowHtml(kip, nDays, leadCols, padCols){
     tr.appendChild(td);
   }
   for(let d=1; d<=nDays; d++){
-    const idx = mod8(daysSinceAnchor(viewYear, viewMonth, d) + Number(kip.offset||0));
+    const idx = mod8(daysSinceAnchor(common, viewYear, viewMonth, d) + Number(kip.offset||0));
     const letter = PHASE_LETTERS[idx];
     const dow = new Date(viewYear, viewMonth, d).getDay();
     const wknd = (dow===0||dow===6);
@@ -669,13 +672,13 @@ function blankRowHtml(nDays, leadCols, padCols){
   return tr;
 }
 function groupedRenderOrder(){
-  const kipIds = new Set(state.kips.map(k=>k.id));
+  const kipIds = new Set(common.kips.map(k=>k.id));
   const order = [];
-  state.employees.filter(e=>!e.kipId || !kipIds.has(e.kipId)).forEach(e=>order.push({type:'emp', emp:e}));
-  state.kips.forEach((kip,i)=>{
+  common.employees.filter(e=>!e.kipId || !kipIds.has(e.kipId)).forEach(e=>order.push({type:'emp', emp:e}));
+  common.kips.forEach((kip,i)=>{
     if(i>0) order.push({type:'blank'});
     order.push({type:'kip', kip});
-    state.employees.filter(e=>e.kipId===kip.id).forEach(e=>order.push({type:'emp', emp:e}));
+    common.employees.filter(e=>e.kipId===kip.id).forEach(e=>order.push({type:'emp', emp:e}));
   });
   return order;
 }
@@ -694,7 +697,7 @@ function buildBangCongRow(emp, nDays){
   nameTd.textContent = emp.name;
   tr.appendChild(nameTd);
 
-  const pay = employeePayroll(emp, viewYear, viewMonth);
+  const pay = employeePayroll(common, emp, viewYear, viewMonth);
   const mucLuongTd = document.createElement('td');
   mucLuongTd.textContent = Math.round(pay.tongLuongPhuCap).toLocaleString('vi-VN');
   mucLuongTd.style.textAlign = 'right';
@@ -712,7 +715,7 @@ function buildBangCongRow(emp, nDays){
     const dateStr = fmtDate(viewYear, viewMonth, d);
     const dow = new Date(viewYear, viewMonth, d).getDay();
     const wknd = (dow===0||dow===6);
-    const code = computeFinalCode(emp, viewYear, viewMonth, d);
+    const code = computeFinalCode(common, emp, viewYear, viewMonth, d);
     count[code] = (count[code]||0)+1;
     const td = document.createElement('td');
     if(wknd) td.classList.add('weekend');
@@ -761,7 +764,7 @@ function buildBangCongRow(emp, nDays){
 }
 
 function renderCalendar(){
-  if(!state) return;
+  if(!state || !common) return;
   const nDays = daysInMonth(viewYear, viewMonth);
   const table = document.getElementById('ccTable');
   table.innerHTML = '';
@@ -810,13 +813,13 @@ function buildBangCongTotalsRow(nDays){
 
   let totalLuong = 0, totalHeso = 0;
   const totals = {AJ:0,AK:0,AL:0,AM:0,AO:0,AP:0,AQ:0,AR:0,AU:0,AV:0,AW:0};
-  state.employees.forEach(emp=>{
-    const pay = employeePayroll(emp, viewYear, viewMonth);
+  common.employees.forEach(emp=>{
+    const pay = employeePayroll(common, emp, viewYear, viewMonth);
     totalLuong += pay.tongLuongPhuCap;
     totalHeso += pay.hesoCDHieuLuc;
     const count = {}; CODE_ORDER.forEach(c=>count[c]=0);
     for(let d=1; d<=nDays; d++){
-      const code = computeFinalCode(emp, viewYear, viewMonth, d);
+      const code = computeFinalCode(common, emp, viewYear, viewMonth, d);
       count[code] = (count[code]||0)+1;
     }
     totals.AJ += WORK_CODES.reduce((s,c)=>s+count[c],0);
@@ -865,16 +868,6 @@ document.getElementById('btnClear').addEventListener('click', async ()=>{
   }catch(e){ alert('Không xoá được: '+e.message); }
 });
 
-document.getElementById('btnLockMonth').addEventListener('click', async ()=>{
-  if(!confirm('Chốt dữ liệu tháng '+(viewMonth+1)+'/'+viewYear+'?\n\nSau khi chốt, tháng này sẽ giữ nguyên mã chấm công như hiện tại, kể cả sau này bạn đổi Kíp/lịch của nhân sự ở tab Common (đổi người, đổi ca...) — thay đổi đó chỉ áp dụng cho tháng hiện tại và các tháng sau, không ảnh hưởng ngược lại tháng đã chốt này.\n\nVẫn có thể tự sửa tay từng ô sau khi chốt nếu cần, hoặc bấm "Xoá ghi đè thủ công" để mở khoá lại.')) return;
-  try{
-    const res = await api('POST', '/api/state/lock-month', {year: viewYear, month: viewMonth+1});
-    state = await api('GET', '/api/state');
-    renderCalendar();
-    alert('Đã chốt xong tháng '+(viewMonth+1)+'/'+viewYear+' ('+res.count+' ô).');
-  }catch(e){ alert('Không chốt được: '+e.message); }
-});
-
 document.getElementById('btnExportCSV').addEventListener('click', ()=>{
   window.location.href = `/api/export/excel?year=${viewYear}&month=${viewMonth+1}`;
 });
@@ -904,7 +897,7 @@ function getSwapPairColor(dateStr, empId){
   if(idx<0) return null;
   return SWAP_PAIR_COLORS[idx % SWAP_PAIR_COLORS.length];
 }
-function empNameById(id){ const e = state.employees.find(x=>x.id===id); return e ? e.name : id; }
+function empNameById(id){ const e = common.employees.find(x=>x.id===id); return e ? e.name : id; }
 
 document.getElementById('btnGenKip').addEventListener('click', ()=>{
   renderDangKy();
@@ -981,7 +974,7 @@ function buildDangKyRow(emp, nDays){
 }
 
 function renderDangKy(){
-  if(!state) return;
+  if(!state || !common) return;
   const nDays = daysInMonth(viewYear, viewMonth);
   const table = document.getElementById('dkTable');
   table.innerHTML = '';
@@ -1040,15 +1033,15 @@ async function saveMealOverride(empId, patch){
 }
 
 function renderMeal(){
-  if(!state) return;
+  if(!state || !common) return;
   const nDays = daysInMonth(viewYear, viewMonth);
   const body = document.getElementById('mealBody');
   body.innerHTML='';
   let totalCong = 0, totalCa3 = 0, totalBuaAn = 0;
-  state.employees.forEach((emp, idx)=>{
+  common.employees.forEach((emp, idx)=>{
     const count={}; CODE_ORDER.forEach(c=>count[c]=0);
     for(let d=1; d<=nDays; d++){
-      const code = computeFinalCode(emp, viewYear, viewMonth, d);
+      const code = computeFinalCode(common, emp, viewYear, viewMonth, d);
       count[code]=(count[code]||0)+1;
     }
     const AJ = WORK_CODES.reduce((s,c)=>s+count[c],0);
@@ -1130,12 +1123,26 @@ async function saveMonthlyAllowance(empId, year, month, m3, pct5){
   }catch(e){ alert('Không lưu được: '+e.message); }
 }
 
-function renderTongHopNam(){
+async function renderTongHopNam(){
   if(!state) return;
   const year = Number(document.getElementById('selYearTHN').value);
   const table = document.getElementById('thnTable');
-  table.innerHTML = '';
+  table.innerHTML = '<tbody><tr><td>Đang tải...</td></tr></tbody>';
 
+  // Nhan su gio la CUA RIENG TUNG THANG, nen tab nay (xuyen suot ca nam) phai tai Common cua CA 12
+  // THANG roi hop nhat lai theo id nhan su - ai lam thang nao thi tinh dung theo ban ghi thang do
+  // (dung khi co nguoi doi lich/nghi giua nam, khong con dung 1 danh sach nhan su chung cho ca nam nua).
+  const monthCommons = [];
+  for(let m=0; m<12; m++){ monthCommons.push(await getCommon(year, m)); }
+  const empOrder = []; const seenEmp = new Set(); const displayName = {};
+  monthCommons.forEach(c=>{
+    c.employees.forEach(e=>{
+      if(!seenEmp.has(e.id)){ seenEmp.add(e.id); empOrder.push(e.id); }
+      displayName[e.id] = e.name;
+    });
+  });
+
+  table.innerHTML = '';
   const thead = document.createElement('thead');
   const row1 = document.createElement('tr');
   const row2 = document.createElement('tr');
@@ -1164,42 +1171,47 @@ function renderTongHopNam(){
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
-  state.employees.forEach(emp=>{
+  empOrder.forEach(empId=>{
     const tr = document.createElement('tr');
     const nameTd = document.createElement('td');
     nameTd.className = 'namecell';
-    nameTd.textContent = emp.name;
+    nameTd.textContent = displayName[empId];
     tr.appendChild(nameTd);
 
     let totalF = 0;
     for(let m=0; m<12; m++){
+      const c = monthCommons[m];
+      const emp = c.employees.find(e=>e.id===empId);
       const nDays = daysInMonth(year, m);
       let fCount = 0;
-      for(let d=1; d<=nDays; d++){
-        if(computeFinalCode(emp, year, m, d) === 'F') fCount++;
+      if(emp){
+        for(let d=1; d<=nDays; d++){
+          if(computeFinalCode(c, emp, year, m, d) === 'F') fCount++;
+        }
       }
       totalF += fCount;
-      const key = `${emp.id}_${year}-${String(m+1).padStart(2,'0')}`;
+      const key = `${empId}_${year}-${String(m+1).padStart(2,'0')}`;
       const override = state.monthlyAllowances[key];
-      const m3 = override ? override.m3 : emp.allow.m3;
-      const pct5 = override ? override.pct5 : emp.allow.pct5;
+      const m3 = emp ? (override ? override.m3 : emp.allow.m3) : false;
+      const pct5 = emp ? (override ? override.pct5 : emp.allow.pct5) : false;
 
       const tdF = document.createElement('td');
-      tdF.textContent = fCount || '';
+      tdF.textContent = emp && fCount ? fCount : '';
       tdF.style.textAlign = 'center';
       tdF.style.color = fCount ? 'var(--ink)' : 'var(--ink-soft)';
+      if(!emp) tdF.title = 'Nhân sự này chưa/không có trong Common của tháng này';
       tr.appendChild(tdF);
 
       const tdM3 = document.createElement('td');
       const chkM3 = document.createElement('input');
-      chkM3.type = 'checkbox'; chkM3.checked = !!m3;
-      chkM3.addEventListener('change', ()=>saveMonthlyAllowance(emp.id, year, m, chkM3.checked, chk5.checked));
+      chkM3.type = 'checkbox'; chkM3.checked = !!m3; chkM3.disabled = !emp;
+      chkM3.addEventListener('change', ()=>saveMonthlyAllowance(empId, year, m, chkM3.checked, chk5.checked));
       tdM3.style.textAlign='center'; tdM3.appendChild(chkM3); tr.appendChild(tdM3);
 
       const tdPct5 = document.createElement('td');
       const chk5 = document.createElement('input');
-      chk5.type = 'checkbox'; chk5.checked = !!pct5;
-      chk5.addEventListener('change', ()=>saveMonthlyAllowance(emp.id, year, m, chkM3.checked, chk5.checked));
+      chk5.type = 'checkbox'; chk5.checked = !!pct5; chk5.disabled = !emp;
+      chk5.addEventListener('change', ()=>saveMonthlyAllowance(empId, year, m, chkM3.checked, chk5.checked));
       tdPct5.style.textAlign='center'; tdPct5.appendChild(chk5); tr.appendChild(tdPct5);
     }
     const tdTotal = document.createElement('td');
@@ -1241,6 +1253,7 @@ async function bootApp(){
     return; // showLogin() da duoc goi ben trong api() neu 401
   }
   initMonthYearControls();
+  await refreshActiveCommon();
   renderCommon();
   renderBacTable();
   renderKipTable();
