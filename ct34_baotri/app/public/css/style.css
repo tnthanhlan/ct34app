@@ -198,6 +198,7 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
   background: var(--surface); width: 100%; max-width: 660px;
   border-radius: 16px 16px 0 0; max-height: 90vh; overflow-y: auto; padding: 20px;
 }
+.modal.wide { max-width: 980px; }
 .modal-title { font-size: 19px; font-weight: 700; margin-bottom: 14px; font-family: 'Times New Roman', Times, serif; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .form-grid .full { grid-column: 1 / -1; }

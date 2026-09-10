@@ -95,11 +95,11 @@ function navigate(view) {
 }
 
 // ---------- Modal helpers ----------
-function openModal(html) {
+function openModal(html, extraClass = '') {
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   backdrop.id = 'modal-backdrop';
-  backdrop.innerHTML = `<div class="modal">${html}</div>`;
+  backdrop.innerHTML = `<div class="modal ${extraClass}">${html}</div>`;
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(); });
   document.body.appendChild(backdrop);
 }
@@ -690,6 +690,7 @@ async function renderMaintenance() {
         <input type="date" id="log-to" value="${escapeAttr(maintFilter.to)}" style="display:block; margin-top:4px; padding:7px 9px; border:1.5px solid var(--border); border-radius:7px;">
       </label>
       ${(maintFilter.from || maintFilter.to) ? '<button type="button" class="btn btn-ghost btn-sm" id="clear-date-btn" style="align-self:flex-end;">Bỏ lọc ngày</button>' : ''}
+      <button type="button" class="btn btn-primary btn-sm" id="maint-stats-btn" style="align-self:flex-end;">📊 Thống kê</button>
     </div>
     <div class="filter-chips" id="hangmuc-chips">
       ${chip('', 'Tất cả hạng mục')}
@@ -721,6 +722,7 @@ async function renderMaintenance() {
 
   document.getElementById('manage-categories-btn').addEventListener('click', () => openCategoryManager(() => renderMaintenance()));
   document.getElementById('add-log-btn2').addEventListener('click', () => openLogForm());
+  document.getElementById('maint-stats-btn').addEventListener('click', () => openMaintenanceStatsModal());
 }
 
 // Chỉ vẽ lại phần danh sách kết quả (không đụng tới khung/ô tìm kiếm), để gõ tìm kiếm không bị mất focus
@@ -738,6 +740,76 @@ async function renderMaintenanceListOnly() {
   list.innerHTML = items.length ? items.map(logListItemHtml).join('')
     : `<div class="empty-state"><div class="empty-icon">📋</div>Không có lịch sử phù hợp bộ lọc</div>`;
   list.querySelectorAll('.list-item').forEach(el => el.addEventListener('click', () => openLogForm(state.logMap[el.dataset.id])));
+}
+
+// Xem nhanh dạng bảng (giống sheet "Lich su bao tri" khi xuất Excel) cho đúng bộ lọc đang chọn,
+// để không phải tải file xlsx về mới xem được các việc đã làm trong khoảng ngày đó.
+async function openMaintenanceStatsModal() {
+  const params = new URLSearchParams();
+  if (maintFilter.hang_muc) params.set('hang_muc', maintFilter.hang_muc);
+  if (maintFilter.q) params.set('q', maintFilter.q);
+  if (maintFilter.from) params.set('from', maintFilter.from);
+  if (maintFilter.to) params.set('to', maintFilter.to);
+
+  openModal(`<div class="modal-title">📊 Thống kê bảo trì</div><div class="empty-state">Đang tải...</div>`, 'wide');
+
+  let items = [];
+  try {
+    const res = await api('/maintenance?' + params.toString());
+    items = res.items || [];
+  } catch (err) {
+    const box = document.getElementById('modal-backdrop');
+    if (box) box.querySelector('.modal').innerHTML = `<div class="modal-title">📊 Thống kê bảo trì</div>
+      <div class="empty-state">Có lỗi khi tải dữ liệu: ${escapeHtml(err.message || String(err))}</div>
+      <div class="modal-actions"><button class="btn btn-primary btn-block" id="close-stats-btn">Đóng</button></div>`;
+    document.getElementById('close-stats-btn').addEventListener('click', closeModal);
+    return;
+  }
+
+  const rangeLabel = (maintFilter.from || maintFilter.to)
+    ? `${escapeHtml(maintFilter.from || '...')} → ${escapeHtml(maintFilter.to || '...')}`
+    : 'tất cả thời gian';
+
+  const html = `
+    <div class="modal-title">📊 Thống kê bảo trì</div>
+    <p style="font-size:13px; color:var(--ink-dim); margin-top:-8px; margin-bottom:14px;">
+      Khoảng ngày: <b>${rangeLabel}</b>${maintFilter.hang_muc ? ' · hạng mục: <b>' + escapeHtml(maintFilter.hang_muc) + '</b>' : ''} — ${items.length} lượt ghi nhận
+    </p>
+    <div style="overflow-x:auto; max-height:58vh; border:1px solid var(--border); border-radius:8px;">
+      ${items.length ? `
+      <table style="width:100%; border-collapse:collapse; font-size:13px;">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border);">
+            <th style="text-align:left; padding:8px 7px; position:sticky; top:0; background:var(--surface); white-space:nowrap;">Mã thiết bị</th>
+            <th style="text-align:left; padding:8px 7px; position:sticky; top:0; background:var(--surface); white-space:nowrap;">Tên gọi</th>
+            <th style="text-align:left; padding:8px 7px; position:sticky; top:0; background:var(--surface); white-space:nowrap;">Hạng mục</th>
+            <th style="text-align:left; padding:8px 7px; position:sticky; top:0; background:var(--surface); white-space:nowrap;">Ngày</th>
+            <th style="text-align:left; padding:8px 7px; position:sticky; top:0; background:var(--surface); white-space:nowrap;">Người thực hiện</th>
+            <th style="text-align:left; padding:8px 7px; position:sticky; top:0; background:var(--surface); min-width:220px;">Nội dung</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(l => `
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:7px; white-space:nowrap;"><span class="engine-code">${escapeHtml(l.ma_thiet_bi || '')}</span></td>
+              <td style="padding:7px; white-space:nowrap;">${escapeHtml(l.ten_goi || '')}</td>
+              <td style="padding:7px; white-space:nowrap;">${escapeHtml(l.hang_muc || '')}</td>
+              <td style="padding:7px; white-space:nowrap;">${escapeHtml(l.ngay_thuc_hien || '')}</td>
+              <td style="padding:7px; white-space:nowrap;">${escapeHtml(l.nguoi_thuc_hien || '')}</td>
+              <td style="padding:7px;">${escapeHtml(l.noi_dung || '')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      ` : `<div class="empty-state">Không có lịch sử phù hợp trong khoảng thời gian đã chọn</div>`}
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary btn-block" id="close-stats-btn">Đóng</button>
+    </div>
+  `;
+  const box = document.getElementById('modal-backdrop');
+  if (box) box.querySelector('.modal').innerHTML = html;
+  document.getElementById('close-stats-btn').addEventListener('click', closeModal);
 }
 
 async function openLogForm(log = null, presetEngine = null) {
