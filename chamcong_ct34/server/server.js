@@ -797,7 +797,7 @@ cron.schedule('5 0 1 * *', () => {
   autoExportMonth(prevMonth.getFullYear(), prevMonth.getMonth());
 });
 // Cung xuat lai file cua THANG HIEN TAI moi ngay luc 23:50 de luon co ban cap nhat moi nhat
-cron.schedule('50 23 * * *', () => {
+cron.schedule('0 0 * * *', () => {
   const now = new Date();
   autoExportMonth(now.getFullYear(), now.getMonth());
 });
