@@ -1,0 +1,36 @@
+name: "Đồng bộ Checklist CT34 -> OneDrive"
+version: "1.0.1"
+slug: "ct34_checklist_sync"
+description: "Định kỳ kéo báo cáo tuần Checklist CT34 (Google Sheets/Apps Script, action exportNow) về HAOS rồi tự đẩy lên OneDrive - dùng chung cơ chế rclone như add-on Bảo trì/Chấm công. Lịch mặc định 23:35 Chủ Nhật, LỆCH GIỜ có chủ đích với 23:50 của 2 add-on kia để tránh 2-3 tiến trình cùng gọi OneDrive 1 lúc gây lỗi serviceNotAvailable."
+url: "https://github.com/tnthanhlan/ct34app"
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+startup: application
+boot: auto
+init: false
+map:
+  - share:rw
+options:
+  admin_email: "tnthanhlan@gmail.com"
+  api_url: "https://script.google.com/macros/s/AKfycbzLSRntlzCXHdif-XuarOFCWlKNCZkzxMg2aYFKOnNbxtsey3XcDhSahFNlgst1PAKQLA/exec"
+  sync_cron: "35 23 * * 0"
+  timezone: "Asia/Ho_Chi_Minh"
+  onedrive_backup_enabled: false
+  onedrive_token: ""
+  onedrive_remote_path: "Checklist CT34/Bao cao tuan"
+  onedrive_drive_id: ""
+  onedrive_drive_type: "personal"
+schema:
+  admin_email: str
+  api_url: str
+  sync_cron: str
+  timezone: str
+  onedrive_backup_enabled: bool
+  onedrive_token: password
+  onedrive_remote_path: str
+  onedrive_drive_id: str
+  onedrive_drive_type: str
