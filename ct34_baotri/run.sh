@@ -69,8 +69,22 @@ else
 fi
 
 if [ -n "$CF_TOKEN" ]; then
-  echo "[baotri_ct34] Khoi dong Cloudflare Tunnel (chay nen trong container nay)..."
-  cloudflared tunnel --protocol http2 run --token "$CF_TOKEN" &
+  echo "[baotri_ct34] Khoi dong Cloudflare Tunnel (chay nen trong container nay, tu dong khoi dong lai neu bi thoat)..."
+  # cloudflared doi khi mat ket noi voi edge thi no tu dong retry, NHUNG neu no that bai ngay
+  # tu luc ket noi lan dau (vi du mang chap chon dung luc container vua khoi dong) thi no se
+  # THOAT HAN (exit) thay vi retry mai - luc do neu khong co gi khoi dong lai no thi tunnel
+  # coi nhu chet han, web se bao loi 1033 cho toi khi ai do tu tay restart ca add-on. Boc no
+  # trong 1 vong lap vo han de tu dong khoi dong lai bat ke ly do thoat la gi.
+  (
+    while true; do
+      # "|| CODE=$?" (khong phai dong rieng "CODE=$?") la de "set -e" o dau file khong hieu
+      # nham la ca vong lap nay that bai roi thoat subshell ngay khi cloudflared exit != 0
+      cloudflared tunnel --protocol http2 run --token "$CF_TOKEN" || CODE=$?
+      echo "[baotri_ct34] Cloudflare Tunnel bi thoat (ma loi: ${CODE:-0}) - tu khoi dong lai sau 5 giay..."
+      CODE=
+      sleep 5
+    done
+  ) &
 else
   echo "[baotri_ct34] Chua cau hinh cloudflare_tunnel_token, bo qua buoc chay Cloudflare Tunnel."
 fi
