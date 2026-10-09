@@ -147,6 +147,38 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .stat-card.danger .stat-num { color: var(--red); }
 .stat-card.ok .stat-num { color: var(--green); }
 
+/* ---------- Yêu cầu công việc (dashboard) ---------- */
+.requirements-card {
+  background: var(--amber-bg);
+  border: 1px solid var(--amber);
+  border-left: 4px solid var(--amber);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+.requirements-card .req-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--steel);
+  line-height: 1.45;
+  margin-bottom: 12px;
+}
+.requirements-card .req-block { margin-bottom: 12px; }
+.requirements-card .req-block:last-child { margin-bottom: 0; }
+.requirements-card .req-label {
+  display: block;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin-bottom: 4px;
+}
+.requirements-card p { font-size: 13.5px; color: var(--ink); line-height: 1.55; margin: 0; }
+.requirements-card ul { font-size: 13.5px; color: var(--ink); line-height: 1.55; margin: 4px 0 0; padding-left: 18px; }
+.requirements-card li { margin-bottom: 4px; }
+.requirements-card li:last-child { margin-bottom: 0; }
+
 .engine-code {
   font-family: var(--font-mono);
   font-weight: 700;
@@ -282,6 +314,8 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
   .tab-btn[data-view="engines"].active { background: #12805c; border-left-color: #86d4ba; }
   .tab-btn[data-view="maintenance"].active { background: #d4650f; border-left-color: #f5c398; }
   .tab-btn[data-view="materials"].active { background: #8250c8; border-left-color: #cdb3ef; }
+
+  .stat-grid { grid-template-columns: repeat(4, 1fr); }
   .tab-btn[data-view="data"].active { background: #b02a37; border-left-color: #eda6ad; }
   .tab-btn.active .tab-icon { color: #fff; }
 

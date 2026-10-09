@@ -139,6 +139,22 @@ async function renderDashboard() {
       <div class="stat-card warn"><div class="stat-num">${last30.length}</div><div class="stat-label">30 ngày qua</div></div>
       <div class="stat-card danger"><div class="stat-num">${enginesNoHistory}</div><div class="stat-label">Chưa có lịch sử</div></div>
     </div>
+    <div class="requirements-card">
+      <div class="req-title">B. Bảo trì CT34 - CÁC YÊU CẦU THỰC HIỆN ĐỐI VỚI VIỆC BẢO TRÌ BẢO DƯỠNG THIẾT BỊ HẰNG NGÀY VÀ THEO ĐỢT SCL:</div>
+      <div class="req-block">
+        <span class="req-label">Hằng ngày</span>
+        <p>Khi phát sinh bất kỳ sự cố hay công việc VSBD gì ngoài công tác trực ca/kiểm tra checklist đều phải nhập công việc/ngày giờ và người kiểm tra theo các hạng mục có sẵn, đặc biệt chú ý nhập vật tư thiết bị nếu có thay thế để theo dõi VT tiêu hao và phục vụ công tác lập kế hoạch ngân sách.</p>
+      </div>
+      <div class="req-block">
+        <span class="req-label">Đợt SCL</span>
+        <ul>
+          <li>Triển khai theo tuyến cùng tiến độ của xưởng XM;</li>
+          <li>Thực hiện VSBD kiểm tra tất cả các thiết bị dọc theo tuyến kiểm tra: Động cơ/Công tắc/Nút ấn/Sensor/Switches/Valves/Thiết bị phụ trợ...;</li>
+          <li>Nhập rõ các công việc đã làm và chọn đúng hạng mục, ngày giờ và người thực hiện đầy đủ, chọn nhập vật tư đã thay thế và tình trạng cần chú ý!</li>
+          <li>Vật tư chưa có trong list thì ghi rõ trong mục nội dung để thêm sau.</li>
+        </ul>
+      </div>
+    </div>
     <div class="section-title">Hoạt động gần đây</div>
     <div class="card" id="recent-list"></div>
   `;
