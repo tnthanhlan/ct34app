@@ -1,17 +1,22 @@
 const ExcelJS = require('exceljs');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const dayjs = require('dayjs');
 const db = require('./db');
 const { getEngineFields, parseData, displayLabel } = require('./engineFields');
 const { applyStandardStyle } = require('./excelStyle');
 const { syncFileToOnedrive } = require('./onedrive');
-const { sendWeeklyReportEmail } = require('./mailer');
+const { sendWeeklyReportEmailPromise } = require('./mailer');
 
-async function runWeeklyExport() {
-  const exportDir = process.env.EXPORT_DIR || '/share/baotri_exports';
-  fs.mkdirSync(exportDir, { recursive: true });
+// Email chỉ gửi lịch sử bảo trì trong N ngày gần nhất (đỡ nặng hộp mail) - bản ĐẦY ĐỦ mọi năm
+// vẫn được lưu nguyên trên OneDrive và file tải thủ công ("Xuất Excel ngay"), không mất dữ liệu.
+const EMAIL_HISTORY_DAYS = 7;
 
+// Dựng workbook Excel (danh sách động cơ + lịch sử bảo trì). sinceDate (dạng 'YYYY-MM-DD'):
+// nếu truyền vào thì chỉ lấy các lần bảo trì có ngay_thuc_hien >= sinceDate; truyền null/undefined
+// thì lấy TOÀN BỘ lịch sử (dùng cho bản lưu trữ đầy đủ OneDrive/tải thủ công).
+async function buildWorkbook(sinceDate) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Baotri CT34';
   wb.created = new Date();
@@ -43,11 +48,18 @@ async function runWeeklyExport() {
   ];
   wsTasks.getRow(1).font = { bold: true };
 
-  const logs = db.prepare(`
-    SELECT t.*, e.ma_thiet_bi, e.data_json AS engine_data_json FROM maintenance_logs t
-    JOIN engines e ON e.id = t.engine_id
-    ORDER BY t.ngay_thuc_hien DESC
-  `).all();
+  const logs = sinceDate
+    ? db.prepare(`
+        SELECT t.*, e.ma_thiet_bi, e.data_json AS engine_data_json FROM maintenance_logs t
+        JOIN engines e ON e.id = t.engine_id
+        WHERE t.ngay_thuc_hien >= ?
+        ORDER BY t.ngay_thuc_hien DESC
+      `).all(sinceDate)
+    : db.prepare(`
+        SELECT t.*, e.ma_thiet_bi, e.data_json AS engine_data_json FROM maintenance_logs t
+        JOIN engines e ON e.id = t.engine_id
+        ORDER BY t.ngay_thuc_hien DESC
+      `).all();
 
   logs.forEach(t => {
     wsTasks.addRow({
@@ -60,13 +72,48 @@ async function runWeeklyExport() {
     });
   });
 
-  const filename = `baotri_ct34_${dayjs().format('YYYY-MM-DD_HHmm')}.xlsx`;
-  const filePath = path.join(exportDir, filename);
   applyStandardStyle(wsEngines);
   applyStandardStyle(wsTasks);
-  await wb.xlsx.writeFile(filePath);
+  return wb;
+}
+
+// Dựng bản Excel NHẸ (chỉ EMAIL_HISTORY_DAYS ngày gần nhất) và gửi email ngay - dùng chung cho
+// cả xuất tự động hằng tuần lẫn nút "Gửi email ngay" trong tab Dữ liệu. File tạm nằm ngoài
+// EXPORT_DIR (không lẫn vào danh sách file đã xuất) và tự xoá ngay sau khi gửi xong.
+async function sendLightweightEmail() {
+  let tmpPath = null;
+  try {
+    const sinceDate = dayjs().subtract(EMAIL_HISTORY_DAYS, 'day').format('YYYY-MM-DD');
+    const wbLight = await buildWorkbook(sinceDate);
+    // Thêm hậu tố ngẫu nhiên: hàm này có thể bị gọi gần như cùng lúc từ 2 nơi (vd xuất tự động
+    // VÀ bấm "Gửi email ngay" trong cùng 1 phút) - nếu không có hậu tố, 2 lần gọi sẽ trùng tên
+    // file tạm và có thể tự xoá file tạm của nhau giữa chừng (1 lần gửi sẽ báo lỗi "không tìm
+    // thấy file" dù dữ liệu/kết nối hoàn toàn bình thường).
+    const unique = `${process.pid}_${Math.random().toString(36).slice(2, 8)}`;
+    const filename = `baotri_ct34_${EMAIL_HISTORY_DAYS}ngay_${dayjs().format('YYYY-MM-DD_HHmmss')}_${unique}.xlsx`;
+    tmpPath = path.join(os.tmpdir(), filename);
+    await wbLight.xlsx.writeFile(tmpPath);
+    return await sendWeeklyReportEmailPromise(tmpPath, {
+      text: `File Excel đính kèm gồm: danh sách động cơ (đầy đủ) và lịch sử bảo trì ${EMAIL_HISTORY_DAYS} ngày gần nhất (từ ${sinceDate}). Dữ liệu đầy đủ mọi năm vẫn được lưu nguyên trên OneDrive và trong file "Xuất Excel ngay" của add-on, không mất dữ liệu. Email này hệ thống tự động gửi, không cần trả lời.`,
+    });
+  } finally {
+    if (tmpPath) fs.unlink(tmpPath, () => {});
+  }
+}
+
+async function runWeeklyExport() {
+  const exportDir = process.env.EXPORT_DIR || '/share/baotri_exports';
+  fs.mkdirSync(exportDir, { recursive: true });
+
+  // Bản ĐẦY ĐỦ (mọi năm) - lưu trong /share để tải thủ công + đồng bộ OneDrive, làm bản lưu
+  // trữ/backup đầy đủ, không giới hạn ngày.
+  const wbFull = await buildWorkbook(null);
+  const filename = `baotri_ct34_${dayjs().format('YYYY-MM-DD_HHmm')}.xlsx`;
+  const filePath = path.join(exportDir, filename);
+  await wbFull.xlsx.writeFile(filePath);
   syncFileToOnedrive(filePath); // Đồng thời đẩy lên OneDrive nếu đã bật (xem src/onedrive.js) — không chặn việc trả kết quả
-  sendWeeklyReportEmail(filePath); // Đồng thời gửi email đính kèm nếu đã bật (xem src/mailer.js) — không chặn việc trả kết quả
+
+  sendLightweightEmail(); // Gửi email bản nhẹ (xem hàm ở trên) nếu đã bật - không chặn việc trả kết quả
 
   const files = fs.readdirSync(exportDir).filter(f => f.endsWith('.xlsx')).sort();
   while (files.length > 30) {
@@ -76,4 +123,4 @@ async function runWeeklyExport() {
   return filePath;
 }
 
-module.exports = { runWeeklyExport };
+module.exports = { runWeeklyExport, sendLightweightEmail };

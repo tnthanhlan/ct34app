@@ -1594,14 +1594,16 @@ async function renderData() {
     <div class="card">
       <p style="font-size:13px; color:var(--ink-dim); margin-top:0;">
         Ngay sau khi xuất file (tự động hằng tuần hoặc bấm "Xuất Excel ngay" ở trên), hệ thống tự gửi email
-        đính kèm file đó tới danh sách người nhận đã cấu hình, dùng Gmail của admin để gửi.
+        tới danh sách người nhận đã cấu hình, dùng Gmail của admin để gửi. File đính kèm trong email CHỈ
+        gồm lịch sử bảo trì <b>7 ngày gần nhất</b> (cho nhẹ hộp mail) — dữ liệu đầy đủ mọi năm vẫn được lưu
+        nguyên trên OneDrive và trong file "Xuất Excel ngay" ở trên, không mất dữ liệu.
         Bật/điền "weekly_email_enabled", "weekly_email_app_password" (Mật khẩu ứng dụng Gmail — không phải
         mật khẩu đăng nhập thường), "weekly_email_recipients" (nhiều email cách nhau bằng dấu phẩy) trong tab
         <b>Configuration</b> của add-on này.
       </p>
       <div id="email-status-line" style="font-size:13px; margin-bottom:10px;">Đang tải trạng thái...</div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button class="btn btn-primary" id="email-send-now-btn" style="flex:1; min-width:170px;">✉ Gửi email ngay (file mới nhất)</button>
+        <button class="btn btn-primary" id="email-send-now-btn" style="flex:1; min-width:170px;">✉ Gửi email ngay (7 ngày gần nhất)</button>
         <button class="btn btn-ghost" id="email-refresh-btn" style="flex:1; min-width:170px;">⟳ Tải lại nhật ký</button>
       </div>
       <div id="email-log" style="margin-top:10px; max-height:160px; overflow-y:auto; font-size:12px; color:var(--ink-dim); font-family:monospace; line-height:1.6;"></div>
@@ -1651,8 +1653,8 @@ async function renderData() {
   document.getElementById('email-refresh-btn').addEventListener('click', () => renderEmailStatus());
   document.getElementById('email-send-now-btn').addEventListener('click', async () => {
     try {
-      const r = await api('/data/email-send-now', { method: 'POST' });
-      toast(`Đã gửi email kèm file ${r.file}`);
+      await api('/data/email-send-now', { method: 'POST' });
+      toast('Đã gửi email (lịch sử bảo trì 7 ngày gần nhất)');
       renderEmailStatus();
     } catch (err) { toast(err.message); }
   });

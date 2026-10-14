@@ -59,7 +59,7 @@ if (EMAIL_ENABLED) {
 // Trả về Promise (không bao giờ reject - lỗi thì đã tự ghi vào EMAIL_LOG rồi), để nơi gọi có
 // thể "await" khi cần biết kết quả ngay (vd nút "Gửi email ngay"), hoặc bỏ qua khi chỉ cần
 // chạy nền (xuất hàng tuần tự động).
-async function sendWeeklyReportEmailPromise(filePath) {
+async function sendWeeklyReportEmailPromise(filePath, opts = {}) {
   if (!isReady()) return { sent: false, reason: 'Chưa bật/cấu hình xong gửi email (xem tab Configuration của add-on).' };
   if (!fs.existsSync(filePath)) return { sent: false, reason: 'Không tìm thấy file để gửi' };
   try {
@@ -68,7 +68,7 @@ async function sendWeeklyReportEmailPromise(filePath) {
       from: `"Bảo trì CT34" <${SENDER_EMAIL}>`,
       to: EMAIL_RECIPIENTS.join(', '),
       subject: `[Bảo trì CT34] Báo cáo bảo trì - ${path.basename(filePath)}`,
-      text: 'File Excel báo cáo bảo trì CT34 (danh sách động cơ + lịch sử bảo trì) được đính kèm trong email này — hệ thống tự động gửi, không cần trả lời email này.',
+      text: opts.text || 'File Excel báo cáo bảo trì CT34 (danh sách động cơ + lịch sử bảo trì) được đính kèm trong email này — hệ thống tự động gửi, không cần trả lời email này.',
       attachments: [{ filename: path.basename(filePath), path: filePath }],
     });
     emailLog(`Đã gửi email kèm "${path.basename(filePath)}" tới ${EMAIL_RECIPIENTS.join(', ')}`);

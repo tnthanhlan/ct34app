@@ -4,12 +4,12 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
-const { runWeeklyExport } = require('../exportWeekly');
+const { runWeeklyExport, sendLightweightEmail } = require('../exportWeekly');
 const { getEngineFields } = require('../engineFields');
 const { getMaterialFields } = require('../materialFields');
 const { listSheetNames, readSheetSafely } = require('../safeExcelReader');
 const { syncFileToOnedrive, syncFilesSequentially, getOnedriveStatus } = require('../onedrive');
-const { sendWeeklyReportEmailPromise, getEmailStatus } = require('../mailer');
+const { getEmailStatus } = require('../mailer');
 const { getMergedRanges } = require('../mergeInfo');
 
 const router = express.Router();
@@ -429,22 +429,19 @@ router.get('/email-status', requireAdmin, (req, res) => {
   res.json(getEmailStatus());
 });
 
-// Gửi thử ngay: gửi lại file .xlsx mới nhất đang có trong thư mục xuất (chờ kết quả thật,
-// không chạy nền như onedrive-sync-now, để người bấm biết ngay thành công hay lỗi gì).
+// Gửi thử ngay: dựng 1 file Excel nhẹ (chỉ lịch sử bảo trì mấy ngày gần nhất, xem exportWeekly.js)
+// và gửi luôn (chờ kết quả thật, không chạy nền như onedrive-sync-now, để người bấm biết ngay
+// thành công hay lỗi gì). Không liên quan tới file đã xuất trong /share — bản đầy đủ mọi năm
+// vẫn chỉ nằm trong OneDrive / nút "Xuất Excel ngay".
 router.post('/email-send-now', requireAdmin, async (req, res) => {
   const status = getEmailStatus();
   if (!status.ready) {
     return res.status(400).json({ error: 'Chưa bật/cấu hình xong gửi email (xem tab Configuration của add-on).' });
   }
   try {
-    const dir = process.env.EXPORT_DIR || '/share/baotri_exports';
-    fs.mkdirSync(dir, { recursive: true });
-    const files = fs.readdirSync(dir).filter(f => f.endsWith('.xlsx')).sort();
-    if (!files.length) return res.status(400).json({ error: 'Chưa có file nào đã xuất để gửi — bấm "Xuất Excel ngay" trước đã' });
-    const latest = path.join(dir, files[files.length - 1]);
-    const result = await sendWeeklyReportEmailPromise(latest);
+    const result = await sendLightweightEmail();
     if (!result.sent) return res.status(500).json({ error: result.reason || 'Gửi email thất bại' });
-    res.json({ ok: true, file: path.basename(latest) });
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
