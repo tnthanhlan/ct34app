@@ -1,5 +1,5 @@
 name: "Bảo trì & Vệ sinh - CT34"
-version: "7.9.0"
+version: "7.9.1"
 slug: "ct34_baotri"
 description: "Quản lý thông số động cơ, lịch sử vệ sinh - bảo dưỡng - bảo trì, tự xuất Excel hàng tuần"
 url: "https://github.com/tnthanhlan/ct34app"
@@ -35,6 +35,9 @@ options:
   onedrive_remote_path: ""
   onedrive_drive_id: ""
   onedrive_drive_type: "personal"
+  weekly_email_enabled: true
+  weekly_email_app_password: ""
+  weekly_email_recipients: "doisuachuact3@gmail.com,vutuanct39@gmail.com"
 schema:
   admin_email: str
   admin_password: password
@@ -48,3 +51,6 @@ schema:
   onedrive_remote_path: str
   onedrive_drive_id: str
   onedrive_drive_type: str
+  weekly_email_enabled: bool
+  weekly_email_app_password: password
+  weekly_email_recipients: str

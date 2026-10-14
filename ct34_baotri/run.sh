@@ -16,6 +16,9 @@ if [ -f "$OPTIONS" ]; then
   export ONEDRIVE_REMOTE_PATH=$(jq -r '.onedrive_remote_path // ""' "$OPTIONS")
   export ONEDRIVE_DRIVE_ID=$(jq -r '.onedrive_drive_id // ""' "$OPTIONS")
   export ONEDRIVE_DRIVE_TYPE=$(jq -r '.onedrive_drive_type // "personal"' "$OPTIONS")
+  export WEEKLY_EMAIL_ENABLED=$(jq -r '.weekly_email_enabled // false' "$OPTIONS")
+  export WEEKLY_EMAIL_APP_PASSWORD=$(jq -r '.weekly_email_app_password // ""' "$OPTIONS")
+  export WEEKLY_EMAIL_RECIPIENTS=$(jq -r '.weekly_email_recipients // ""' "$OPTIONS")
 else
   export ADMIN_EMAIL="tnthanhlan@gmail.com"
   export ADMIN_PASSWORD="changeme"
@@ -29,6 +32,9 @@ else
   export ONEDRIVE_REMOTE_PATH=""
   export ONEDRIVE_DRIVE_ID=""
   export ONEDRIVE_DRIVE_TYPE="personal"
+  export WEEKLY_EMAIL_ENABLED="false"
+  export WEEKLY_EMAIL_APP_PASSWORD=""
+  export WEEKLY_EMAIL_RECIPIENTS=""
 fi
 
 export DB_PATH="/data/baotri.db"

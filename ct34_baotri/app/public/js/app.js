@@ -1506,6 +1506,29 @@ async function renderOnedriveStatus() {
   }
 }
 
+// Trạng thái + nhật ký gửi email báo cáo hằng tuần, hiện trong tab Dữ liệu (mục "Gửi email báo cáo")
+async function renderEmailStatus() {
+  const line = document.getElementById('email-status-line');
+  const logBox = document.getElementById('email-log');
+  if (!line || !logBox) return;
+  line.textContent = 'Đang tải trạng thái...';
+  try {
+    const st = await api('/data/email-status');
+    if (!st.enabled) {
+      line.innerHTML = '⚪ Chưa bật gửi email — bật "weekly_email_enabled" trong tab Configuration của add-on.';
+    } else if (!st.ready) {
+      line.innerHTML = '🟠 Đã bật nhưng chưa cấu hình xong (thiếu weekly_email_app_password / weekly_email_recipients) — xem nhật ký bên dưới.';
+    } else {
+      line.innerHTML = `🟢 Đang hoạt động — gửi từ <b>${escapeHtml(st.sender)}</b> tới: <b>${st.recipients.map(escapeHtml).join(', ')}</b>`;
+    }
+    logBox.innerHTML = (st.log && st.log.length)
+      ? st.log.map(l => `<div>${escapeHtml(l)}</div>`).join('')
+      : '<div>Chưa có nhật ký nào.</div>';
+  } catch (err) {
+    line.textContent = 'Không tải được trạng thái: ' + err.message;
+  }
+}
+
 async function renderData() {
   const root = document.getElementById('view-root');
   if (state.user.role !== 'admin') {
@@ -1567,6 +1590,23 @@ async function renderData() {
       <div id="onedrive-log" style="margin-top:10px; max-height:160px; overflow-y:auto; font-size:12px; color:var(--ink-dim); font-family:monospace; line-height:1.6;"></div>
     </div>
 
+    <div class="section-title">Gửi email báo cáo</div>
+    <div class="card">
+      <p style="font-size:13px; color:var(--ink-dim); margin-top:0;">
+        Ngay sau khi xuất file (tự động hằng tuần hoặc bấm "Xuất Excel ngay" ở trên), hệ thống tự gửi email
+        đính kèm file đó tới danh sách người nhận đã cấu hình, dùng Gmail của admin để gửi.
+        Bật/điền "weekly_email_enabled", "weekly_email_app_password" (Mật khẩu ứng dụng Gmail — không phải
+        mật khẩu đăng nhập thường), "weekly_email_recipients" (nhiều email cách nhau bằng dấu phẩy) trong tab
+        <b>Configuration</b> của add-on này.
+      </p>
+      <div id="email-status-line" style="font-size:13px; margin-bottom:10px;">Đang tải trạng thái...</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-primary" id="email-send-now-btn" style="flex:1; min-width:170px;">✉ Gửi email ngay (file mới nhất)</button>
+        <button class="btn btn-ghost" id="email-refresh-btn" style="flex:1; min-width:170px;">⟳ Tải lại nhật ký</button>
+      </div>
+      <div id="email-log" style="margin-top:10px; max-height:160px; overflow-y:auto; font-size:12px; color:var(--ink-dim); font-family:monospace; line-height:1.6;"></div>
+    </div>
+
     <div class="section-title">Dọn dẹp dữ liệu</div>
     <div class="card">
       <p style="font-size:13px; color:var(--ink-dim); margin-top:0;">Xóa sạch toàn bộ lịch sử bảo trì đã ghi nhận (không đụng đến danh sách động cơ) — dùng khi cần nhập lại từ đầu cho sạch, ví dụ sau khi nhập thử/nhập nhầm.</p>
@@ -1604,6 +1644,16 @@ async function renderData() {
       const r = await api('/data/onedrive-sync-now', { method: 'POST' });
       toast(`Đã gửi lệnh đồng bộ cho ${r.count} file`);
       setTimeout(renderOnedriveStatus, 3000);
+    } catch (err) { toast(err.message); }
+  });
+
+  renderEmailStatus();
+  document.getElementById('email-refresh-btn').addEventListener('click', () => renderEmailStatus());
+  document.getElementById('email-send-now-btn').addEventListener('click', async () => {
+    try {
+      const r = await api('/data/email-send-now', { method: 'POST' });
+      toast(`Đã gửi email kèm file ${r.file}`);
+      renderEmailStatus();
     } catch (err) { toast(err.message); }
   });
 

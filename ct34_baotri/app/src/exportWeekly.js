@@ -6,6 +6,7 @@ const db = require('./db');
 const { getEngineFields, parseData, displayLabel } = require('./engineFields');
 const { applyStandardStyle } = require('./excelStyle');
 const { syncFileToOnedrive } = require('./onedrive');
+const { sendWeeklyReportEmail } = require('./mailer');
 
 async function runWeeklyExport() {
   const exportDir = process.env.EXPORT_DIR || '/share/baotri_exports';
@@ -65,6 +66,7 @@ async function runWeeklyExport() {
   applyStandardStyle(wsTasks);
   await wb.xlsx.writeFile(filePath);
   syncFileToOnedrive(filePath); // Đồng thời đẩy lên OneDrive nếu đã bật (xem src/onedrive.js) — không chặn việc trả kết quả
+  sendWeeklyReportEmail(filePath); // Đồng thời gửi email đính kèm nếu đã bật (xem src/mailer.js) — không chặn việc trả kết quả
 
   const files = fs.readdirSync(exportDir).filter(f => f.endsWith('.xlsx')).sort();
   while (files.length > 30) {
