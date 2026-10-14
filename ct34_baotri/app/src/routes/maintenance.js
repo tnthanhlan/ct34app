@@ -42,13 +42,13 @@ router.get('/', (req, res) => {
     const ids = rows.map(r => r.id);
     const placeholders = ids.map(() => '?').join(',');
     const matRows = db.prepare(`
-      SELECT lm.log_id, lm.material_id, lm.quantity, m.name, m.unit
+      SELECT lm.log_id, lm.material_id, lm.quantity, lm.export_type, m.name, m.unit
       FROM maintenance_log_materials lm JOIN materials m ON m.id = lm.material_id
       WHERE lm.log_id IN (${placeholders})
     `).all(...ids);
     matRows.forEach(m => {
       if (!materialsByLog.has(m.log_id)) materialsByLog.set(m.log_id, []);
-      materialsByLog.get(m.log_id).push({ material_id: m.material_id, name: m.name, unit: m.unit, quantity: m.quantity });
+      materialsByLog.get(m.log_id).push({ material_id: m.material_id, name: m.name, unit: m.unit, quantity: m.quantity, export_type: m.export_type });
     });
   }
 
@@ -77,22 +77,29 @@ router.get('/:id', (req, res) => {
   if (!row) return res.status(404).json({ error: 'Không tìm thấy bản ghi' });
   const { engine_data_json, ...rest } = row;
   const materials = db.prepare(`
-    SELECT lm.material_id, lm.quantity, m.name, m.unit
+    SELECT lm.material_id, lm.quantity, lm.export_type, m.name, m.unit
     FROM maintenance_log_materials lm JOIN materials m ON m.id = lm.material_id
     WHERE lm.log_id = ?
   `).all(req.params.id);
   res.json({ ...rest, ten_goi: displayLabel(engine_data_json), materials });
 });
 
+// Phan loai xuat hop le: SC = Thay thế Sửa chữa (dùng thật), TK = Thay thế Tồn kho (chỉ giải
+// phóng sổ sách tồn kho, không phải tiêu hao thật). Khác/thiếu -> mac dinh SC.
+const VALID_EXPORT_TYPES = new Set(['SC', 'TK']);
+function normalizeExportType(v) {
+  return VALID_EXPORT_TYPES.has(v) ? v : 'SC';
+}
+
 // Ghi (thay thế toàn bộ) danh sách vật tư đã dùng cho 1 bản ghi lịch sử
 function saveMaterialsForLog(logId, materials) {
   db.prepare('DELETE FROM maintenance_log_materials WHERE log_id = ?').run(logId);
   if (!Array.isArray(materials) || !materials.length) return;
-  const insert = db.prepare('INSERT INTO maintenance_log_materials (log_id, material_id, quantity) VALUES (?, ?, ?)');
+  const insert = db.prepare('INSERT INTO maintenance_log_materials (log_id, material_id, quantity, export_type) VALUES (?, ?, ?, ?)');
   materials.forEach(m => {
     const materialId = m && m.material_id;
     const qty = m && Number(m.quantity);
-    if (materialId && qty > 0) insert.run(logId, materialId, qty);
+    if (materialId && qty > 0) insert.run(logId, materialId, qty, normalizeExportType(m && m.export_type));
   });
 }
 

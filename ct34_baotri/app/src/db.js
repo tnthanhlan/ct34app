@@ -83,11 +83,28 @@ CREATE TABLE IF NOT EXISTS maintenance_log_materials (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Nhat ky NHAP vat tu (go tay) - tu kho Nha may / Xuong / Thu hoi ve sua chua.
+-- Phan XUAT khong co bang rieng: no duoc "lay sang" tu maintenance_log_materials
+-- (xem cot export_type duoc them vao bang do o ensureColumn ben duoi).
+CREATE TABLE IF NOT EXISTS material_imports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+  ngay_nhap TEXT,
+  quantity REAL NOT NULL DEFAULT 0,
+  nguon TEXT NOT NULL DEFAULT 'NM' CHECK(nguon IN ('NM','XG','TH')),
+  ghi_chu TEXT,
+  created_by TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_logs_engine ON maintenance_logs(engine_id);
 CREATE INDEX IF NOT EXISTS idx_logs_date ON maintenance_logs(ngay_thuc_hien);
 CREATE INDEX IF NOT EXISTS idx_logs_hangmuc ON maintenance_logs(hang_muc);
 CREATE INDEX IF NOT EXISTS idx_logmat_log ON maintenance_log_materials(log_id);
 CREATE INDEX IF NOT EXISTS idx_logmat_material ON maintenance_log_materials(material_id);
+CREATE INDEX IF NOT EXISTS idx_imports_material ON material_imports(material_id);
+CREATE INDEX IF NOT EXISTS idx_imports_date ON material_imports(ngay_nhap);
 `);
 
 // Them cot moi vao bang da co san (khong lam mat du lieu cu) - dung khi nang cap tu ban truoc,
@@ -101,6 +118,12 @@ function ensureColumn(table, column, definition) {
 ensureColumn('materials', 'tskt', 'TEXT');
 ensureColumn('materials', 'ma_kho', 'TEXT');
 ensureColumn('materials', 'data_json', "TEXT DEFAULT '{}'");
+
+// Phan loai XUAT: 'SC' = Thay thế Sửa chữa (dùng thật để sửa), 'TK' = Thay thế Tồn kho
+// (chỉ xuất sổ sách để giải phóng tồn kho, không phải tiêu hao thật). Cot nay la cot MOI
+// (tu ban 7.9.0) nen SQLite se tu dien gia tri DEFAULT 'SC' cho TAT CA cac dong lich su
+// bao tri da co san tu truoc - dung y muon: du lieu cu coi nhu toan bo la SC.
+ensureColumn('maintenance_log_materials', 'export_type', "TEXT NOT NULL DEFAULT 'SC'");
 
 // Gieo sẵn 3 trường vật tư mặc định (Đơn vị tính/TSKT/Mã kho) nếu chưa có trường nào,
 // sau đó admin tự thêm/sửa/xóa/sắp xếp thoải mái như trường động cơ.

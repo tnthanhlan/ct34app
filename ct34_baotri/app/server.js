@@ -13,6 +13,7 @@ const maintenanceRoutes = require('./src/routes/maintenance');
 const maintenanceCategoryRoutes = require('./src/routes/maintenanceCategories');
 const materialRoutes = require('./src/routes/materials');
 const materialFieldRoutes = require('./src/routes/materialFields');
+const materialLedgerRoutes = require('./src/routes/materialLedger');
 const importExportRoutes = require('./src/routes/importExport');
 
 seedUsers();
@@ -43,6 +44,7 @@ app.use('/api/maintenance', maintenanceRoutes);
 app.use('/api/maintenance-categories', maintenanceCategoryRoutes);
 app.use('/api/materials', materialRoutes);
 app.use('/api/material-fields', materialFieldRoutes);
+app.use('/api/material-ledger', materialLedgerRoutes);
 app.use('/api/data', importExportRoutes);
 
 app.get('/api/session-check', requireAuth, (req, res) => res.json({ ok: true, user: req.session.user }));

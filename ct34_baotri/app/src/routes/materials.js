@@ -69,11 +69,16 @@ router.delete('/:id', requireAdmin, (req, res) => {
 
 // Báo cáo tiêu hao vật tư theo năm - dùng để lên kế hoạch mua sắm hàng năm.
 // Nhóm theo vật tư + năm (lấy năm từ ngày thực hiện, nếu thiếu thì lấy năm ghi nhận).
+// Tách riêng SC (Thay thế Sửa chữa - tiêu hao thật) và TK (Thay thế Tồn kho - chỉ giải phóng
+// sổ sách, không phải tiêu hao thật) để tường minh khi tính ngân sách, nhưng total_qty vẫn
+// cộng dồn cả 2 loại (theo đúng yêu cầu "tổng hợp theo cả 2 dữ liệu").
 function buildUsageReport() {
   const rows = db.prepare(`
     SELECT
       m.id as material_id, m.name as material_name, m.data_json as material_data_json,
       COALESCE(NULLIF(substr(l.ngay_thuc_hien, 1, 4), ''), substr(l.created_at, 1, 4)) as year,
+      COALESCE(SUM(CASE WHEN lm.export_type = 'TK' THEN lm.quantity ELSE 0 END), 0) as tk_qty,
+      COALESCE(SUM(CASE WHEN lm.export_type = 'TK' THEN 0 ELSE lm.quantity END), 0) as sc_qty,
       SUM(lm.quantity) as total_qty,
       COUNT(DISTINCT lm.log_id) as so_lan_dung
     FROM maintenance_log_materials lm
@@ -90,6 +95,8 @@ function buildUsageReport() {
       material_unit: obj.don_vi_tinh || null,
       year: r.year,
       total_qty: r.total_qty,
+      sc_qty: r.sc_qty,
+      tk_qty: r.tk_qty,
       so_lan_dung: r.so_lan_dung,
     };
   });
@@ -110,12 +117,14 @@ router.get('/export', requireAdmin, async (req, res) => {
 
     const allMaterials = db.prepare('SELECT * FROM materials ORDER BY sort_order ASC, id ASC').all().map(materialToObject);
     const byMaterial = new Map();
-    allMaterials.forEach(m => byMaterial.set(m.id, { name: m.name, unit: m.don_vi_tinh, byYear: {}, total: 0 }));
+    allMaterials.forEach(m => byMaterial.set(m.id, { name: m.name, unit: m.don_vi_tinh, byYear: {}, total: 0, totalSc: 0, totalTk: 0 }));
     usage.forEach(u => {
-      if (!byMaterial.has(u.material_id)) byMaterial.set(u.material_id, { name: u.material_name, unit: u.material_unit, byYear: {}, total: 0 });
+      if (!byMaterial.has(u.material_id)) byMaterial.set(u.material_id, { name: u.material_name, unit: u.material_unit, byYear: {}, total: 0, totalSc: 0, totalTk: 0 });
       const entry = byMaterial.get(u.material_id);
-      entry.byYear[u.year] = u.total_qty;
+      entry.byYear[u.year] = { total: u.total_qty, sc: u.sc_qty, tk: u.tk_qty };
       entry.total += u.total_qty;
+      entry.totalSc += u.sc_qty;
+      entry.totalTk += u.tk_qty;
     });
     const rows = [...byMaterial.values()].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
 
@@ -123,16 +132,30 @@ router.get('/export', requireAdmin, async (req, res) => {
     wb.creator = 'Baotri CT34';
     wb.created = new Date();
 
+    // Moi nam tach 3 cot (Tong/SC/TK) de tuong minh cho tinh toan ngan sach: SC la tieu hao
+    // THAT (dung de sua chua), TK chi la giai phong so sach ton kho - khong phan anh muc do
+    // hao mon thiet bi that su, nen can nhin rieng khi du bao nhu cau mua sam nam toi.
     const ws = wb.addWorksheet('Tieu hao vat tu theo nam');
     ws.columns = [
       { header: 'Vật tư', key: 'name', width: 42 },
       { header: 'Đơn vị tính', key: 'unit', width: 14 },
-      ...years.map(y => ({ header: y, key: 'y' + y, width: 10 })),
-      { header: 'Tổng', key: 'total', width: 12 },
+      ...years.flatMap(y => ([
+        { header: `${y} - Tổng`, key: 'y' + y + '_total', width: 11 },
+        { header: `${y} - SC`, key: 'y' + y + '_sc', width: 10 },
+        { header: `${y} - TK`, key: 'y' + y + '_tk', width: 10 },
+      ])),
+      { header: 'Tổng (tất cả năm)', key: 'total', width: 16 },
+      { header: 'Tổng SC', key: 'totalSc', width: 12 },
+      { header: 'Tổng TK', key: 'totalTk', width: 12 },
     ];
     rows.forEach(r => {
-      const rowData = { name: r.name, unit: r.unit || '', total: r.total || 0 };
-      years.forEach(y => { rowData['y' + y] = r.byYear[y] || 0; });
+      const rowData = { name: r.name, unit: r.unit || '', total: r.total || 0, totalSc: r.totalSc || 0, totalTk: r.totalTk || 0 };
+      years.forEach(y => {
+        const yearData = r.byYear[y] || { total: 0, sc: 0, tk: 0 };
+        rowData['y' + y + '_total'] = yearData.total || 0;
+        rowData['y' + y + '_sc'] = yearData.sc || 0;
+        rowData['y' + y + '_tk'] = yearData.tk || 0;
+      });
       ws.addRow(rowData);
     });
 

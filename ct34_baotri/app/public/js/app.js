@@ -909,9 +909,10 @@ async function openLogForm(log = null, presetEngine = null) {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  // Danh sách vật tư đã dùng cho bản ghi này: mảng {material_id, quantity}, sửa được tự do (thêm/bớt dòng)
+  // Danh sách vật tư đã dùng cho bản ghi này: mảng {material_id, quantity, export_type}, sửa được tự do (thêm/bớt dòng)
+  // export_type: 'SC' = Thay thế Sửa chữa (dùng thật), 'TK' = Thay thế Tồn kho (chỉ giải phóng sổ sách)
   let materialRows = log && Array.isArray(log.materials)
-    ? log.materials.map(m => ({ material_id: m.material_id, quantity: m.quantity }))
+    ? log.materials.map(m => ({ material_id: m.material_id, quantity: m.quantity, export_type: m.export_type || 'SC' }))
     : [];
 
   const html = `
@@ -947,6 +948,9 @@ async function openLogForm(log = null, presetEngine = null) {
       </label></div>
       <div class="full">
         <label>Vật tư đã dùng (không bắt buộc)</label>
+        <p style="font-size:11.5px; color:var(--ink-dim); margin:2px 0 6px;">
+          Thay thế SC = thay/dùng thật để sửa chữa · Thay thế TK = chỉ xuất sổ sách để giải phóng tồn kho (không phải tiêu hao thật)
+        </p>
         <div id="material-rows"></div>
         <div style="display:flex; gap:6px; margin-top:6px;">
           <button type="button" class="btn btn-ghost btn-sm" id="add-material-row-btn">+ Thêm vật tư</button>
@@ -976,9 +980,10 @@ async function openLogForm(log = null, presetEngine = null) {
     }
     wrap.innerHTML = materialRows.map((row, i) => {
       const selectedMaterial = row.material_id ? state.materials.find(m => String(m.id) === String(row.material_id)) : null;
+      const expType = row.export_type || 'SC';
       return `
-      <div class="material-row" data-idx="${i}" style="display:flex; gap:6px; margin-bottom:6px; align-items:flex-start;">
-        <div style="position:relative; flex:2;">
+      <div class="material-row" data-idx="${i}" style="display:flex; gap:6px; margin-bottom:6px; align-items:flex-start; flex-wrap:wrap;">
+        <div style="position:relative; flex:2 1 160px;">
           <input type="text" class="material-combo-input" data-idx="${i}" autocomplete="off" placeholder="Gõ tên vật tư để tìm..."
             value="${selectedMaterial ? escapeAttr(materialLabel(selectedMaterial)) : ''}"
             style="width:100%; padding:8px 9px; border:1.5px solid var(--border); border-radius:7px;">
@@ -986,7 +991,12 @@ async function openLogForm(log = null, presetEngine = null) {
           <div class="combo-results material-combo-results" data-idx="${i}" style="display:none;"></div>
         </div>
         <input type="number" data-idx="${i}" class="material-qty" min="0" step="any" value="${row.quantity || ''}" placeholder="SL"
-          style="flex:0 0 70px; padding:8px 9px; border:1.5px solid var(--border); border-radius:7px;">
+          style="flex:0 0 64px; padding:8px 9px; border:1.5px solid var(--border); border-radius:7px;">
+        <select data-idx="${i}" class="material-export-type" title="Thay thế Sửa chữa (dùng thật) hay Thay thế Tồn kho (chỉ giải phóng sổ sách)"
+          style="flex:0 0 108px; padding:8px 6px; border:1.5px solid var(--border); border-radius:7px; background:var(--surface-2); font-size:12.5px;">
+          <option value="SC" ${expType === 'SC' ? 'selected' : ''}>Thay thế SC</option>
+          <option value="TK" ${expType === 'TK' ? 'selected' : ''}>Thay thế TK</option>
+        </select>
         <button type="button" class="btn btn-danger btn-sm material-remove" data-idx="${i}">✕</button>
       </div>
     `;
@@ -1023,6 +1033,9 @@ async function openLogForm(log = null, presetEngine = null) {
     wrap.querySelectorAll('.material-qty').forEach(inp => {
       inp.addEventListener('input', () => { materialRows[Number(inp.dataset.idx)].quantity = inp.value; });
     });
+    wrap.querySelectorAll('.material-export-type').forEach(sel => {
+      sel.addEventListener('change', () => { materialRows[Number(sel.dataset.idx)].export_type = sel.value; });
+    });
     wrap.querySelectorAll('.material-remove').forEach(btn => {
       btn.addEventListener('click', () => { materialRows.splice(Number(btn.dataset.idx), 1); renderMaterialRows(); });
     });
@@ -1030,7 +1043,7 @@ async function openLogForm(log = null, presetEngine = null) {
   renderMaterialRows();
 
   document.getElementById('add-material-row-btn').addEventListener('click', () => {
-    materialRows.push({ material_id: '', quantity: 1 });
+    materialRows.push({ material_id: '', quantity: 1, export_type: 'SC' });
     renderMaterialRows();
   });
   document.getElementById('manage-materials-inline-btn').addEventListener('click', () => {
@@ -1127,13 +1140,17 @@ async function renderMaterialsReport() {
   const allYears = [...new Set(usage.map(u => u.year))].sort();
   const years = materialsYearFilter ? [materialsYearFilter] : allYears;
   const byMaterial = new Map();
-  state.materials.forEach(m => byMaterial.set(m.id, { name: m.name, unit: m.don_vi_tinh, byYear: {}, total: 0 }));
+  state.materials.forEach(m => byMaterial.set(m.id, { name: m.name, unit: m.don_vi_tinh, byYear: {}, total: 0, totalSc: 0, totalTk: 0 }));
   usage.forEach(u => {
     if (materialsYearFilter && u.year !== materialsYearFilter) return;
-    if (!byMaterial.has(u.material_id)) byMaterial.set(u.material_id, { name: u.material_name, unit: u.material_unit, byYear: {}, total: 0 });
+    if (!byMaterial.has(u.material_id)) byMaterial.set(u.material_id, { name: u.material_name, unit: u.material_unit, byYear: {}, total: 0, totalSc: 0, totalTk: 0 });
     const entry = byMaterial.get(u.material_id);
-    entry.byYear[u.year] = u.total_qty;
+    // total_qty = sc_qty + tk_qty (tổng hợp theo cả 2 loại); giữ riêng sc/tk để hiện breakdown khi có TK,
+    // nhờ vậy ngân sách năm sau nhìn được rõ phần nào là tiêu hao thật (SC) và phần nào chỉ là sổ sách (TK).
+    entry.byYear[u.year] = { total: u.total_qty, sc: u.sc_qty, tk: u.tk_qty };
     entry.total += u.total_qty;
+    entry.totalSc += u.sc_qty;
+    entry.totalTk += u.tk_qty;
   });
 
   const rows = [...byMaterial.values()].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
@@ -1152,6 +1169,7 @@ async function renderMaterialsReport() {
       </label>
       <button class="btn btn-primary btn-block" id="open-material-manager-btn">⚙ Quản lý vật tư (${state.materials.length} loại)</button>
       <button class="btn btn-ghost btn-block" id="export-materials-btn" style="margin-top:8px;">⬇ Xuất Excel báo cáo tiêu hao vật tư${materialsYearFilter ? ' (năm ' + materialsYearFilter + ')' : ' (tất cả các năm)'}</button>
+      <button class="btn btn-ghost btn-block" id="open-material-ledger-btn" style="margin-top:8px;">📒 Theo dõi Nhập / Xuất vật tư hằng ngày</button>
     </div>
     <div class="section-title">Tiêu hao theo năm</div>
     <div class="card" style="overflow-x:auto;">
@@ -1179,8 +1197,19 @@ async function renderMaterialsReport() {
             ${rows.map(r => `
               <tr style="border-bottom:1px solid var(--border);">
                 <td style="padding:9px 8px;">${escapeHtml(r.name)}${r.unit ? ` <span style="color:var(--ink-dim); font-size:12px;">(${escapeHtml(r.unit)})</span>` : ''}</td>
-                ${years.map((y, i) => `<td style="text-align:right; padding:9px 10px; background:${colorOf(i).bg}; color:${colorOf(i).fg}; font-weight:${r.byYear[y] ? '700' : '400'}; font-size:${r.byYear[y] ? '15.5px' : '13px'};">${r.byYear[y] || '—'}</td>`).join('')}
-                <td style="text-align:right; padding:9px 10px; font-weight:800; font-size:16px; background:var(--surface-2);">${r.total || '—'}</td>
+                ${years.map((y, i) => {
+                  const yd = r.byYear[y];
+                  const total = yd ? yd.total : 0;
+                  const tk = yd ? yd.tk : 0;
+                  return `<td style="text-align:right; padding:9px 10px; background:${colorOf(i).bg}; color:${colorOf(i).fg};">
+                    <div style="font-weight:${total ? '700' : '400'}; font-size:${total ? '15.5px' : '13px'};">${total || '—'}</div>
+                    ${tk > 0 ? `<div style="font-size:10.5px; font-weight:600; opacity:.75; margin-top:1px;">SC ${yd.sc} · TK ${tk}</div>` : ''}
+                  </td>`;
+                }).join('')}
+                <td style="text-align:right; padding:9px 10px; background:var(--surface-2);">
+                  <div style="font-weight:800; font-size:16px;">${r.total || '—'}</div>
+                  ${r.totalTk > 0 ? `<div style="font-size:10.5px; font-weight:700; opacity:.7; margin-top:1px;">SC ${r.totalSc} · TK ${r.totalTk}</div>` : ''}
+                </td>
               </tr>
             `).join('')}
           </tbody>
@@ -1197,6 +1226,261 @@ async function renderMaterialsReport() {
   document.getElementById('open-material-manager-btn').addEventListener('click', () => openMaterialManager(() => renderMaterialsReport()));
   document.getElementById('export-materials-btn').addEventListener('click', () => {
     window.location.href = '/api/materials/export' + (materialsYearFilter ? '?year=' + encodeURIComponent(materialsYearFilter) : '');
+  });
+  document.getElementById('open-material-ledger-btn').addEventListener('click', () => openMaterialLedgerModal());
+}
+
+// ---------- Nhập / Xuất vật tư hằng ngày ----------
+// Nhập: gõ tay (nguồn NM = Nhà máy / XG = Xưởng / TH = Thu hồi).
+// Xuất: CHỈ XEM - tự lấy từ lịch sử Bảo trì (maintenance_log_materials), không nhập tay ở đây.
+const NGUON_LABELS = { NM: 'Nhà máy', XG: 'Xưởng', TH: 'Thu hồi' };
+let ledgerTab = 'nhap';
+let ledgerImportFilter = { from: '', to: '' };
+let ledgerExportFilter = { from: '', to: '', export_type: '' };
+let ledgerEditingImport = null; // bản ghi nhập đang sửa (null = đang thêm mới)
+
+function materialDisplayLabel(m) {
+  return m.name + (m.don_vi_tinh ? ' (' + m.don_vi_tinh + ')' : '');
+}
+
+async function openMaterialLedgerModal() {
+  await loadMaterials();
+  ledgerTab = 'nhap';
+  ledgerEditingImport = null;
+  const html = `
+    <div class="modal-title">📒 Nhập / Xuất vật tư hằng ngày</div>
+    <p style="font-size:12.5px; color:var(--ink-dim); margin-top:-8px;">
+      <b>Nhập</b>: bạn tự ghi khi có vật tư về (mới/cũ từ kho Nhà máy, kho Xưởng, hoặc thu hồi về sửa chữa).
+      <b>Xuất</b>: hệ thống tự lấy từ lịch sử Bảo trì — không sửa được ở đây, muốn sửa thì vào đúng bản ghi bảo trì đó.
+    </p>
+    <div class="filter-chips">
+      <button type="button" class="chip ${ledgerTab === 'nhap' ? 'active' : ''}" data-tab="nhap">⬇ Nhập</button>
+      <button type="button" class="chip ${ledgerTab === 'xuat' ? 'active' : ''}" data-tab="xuat">⬆ Xuất</button>
+    </div>
+    <div id="ledger-body"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary btn-block" id="close-ledger-btn">Đóng</button>
+    </div>
+  `;
+  openModal(html, 'wide');
+  document.getElementById('close-ledger-btn').addEventListener('click', closeModal);
+  document.querySelectorAll('.modal .filter-chips .chip').forEach(c => {
+    c.addEventListener('click', () => {
+      ledgerTab = c.dataset.tab;
+      document.querySelectorAll('.modal .filter-chips .chip').forEach(x => x.classList.toggle('active', x.dataset.tab === ledgerTab));
+      renderLedgerBody();
+    });
+  });
+  await renderLedgerBody();
+}
+
+async function renderLedgerBody() {
+  const body = document.getElementById('ledger-body');
+  if (!body) return;
+  body.innerHTML = '<div class="empty-state">Đang tải...</div>';
+  if (ledgerTab === 'nhap') await renderLedgerNhap(body);
+  else await renderLedgerXuat(body);
+}
+
+// ----- Tab NHẬP -----
+async function renderLedgerNhap(body) {
+  const params = new URLSearchParams();
+  if (ledgerImportFilter.from) params.set('from', ledgerImportFilter.from);
+  if (ledgerImportFilter.to) params.set('to', ledgerImportFilter.to);
+  let items = [];
+  try {
+    const res = await api('/material-ledger/imports?' + params.toString());
+    items = res.items || [];
+  } catch (err) {
+    body.innerHTML = `<div class="empty-state">Có lỗi khi tải: ${escapeHtml(err.message)}</div>`;
+    return;
+  }
+
+  const editing = ledgerEditingImport;
+  const sortedMaterials = [...state.materials].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+  const today = new Date().toISOString().slice(0, 10);
+
+  body.innerHTML = `
+    <form id="ledger-import-form" class="form-grid" style="margin:12px 0; padding:12px; background:var(--surface-2); border-radius:10px;">
+      <div class="full" style="font-size:12.5px; font-weight:700; color:var(--ink-dim);">
+        ${editing ? 'Sửa dòng nhập' : '+ Thêm dòng nhập mới'}
+      </div>
+      <div><label>Ngày nhập
+        <input type="date" name="ngay_nhap" value="${editing ? escapeAttr(editing.ngay_nhap || '') : today}">
+      </label></div>
+      <div><label>Nguồn
+        <select name="nguon">
+          <option value="NM" ${(!editing || editing.nguon === 'NM') ? 'selected' : ''}>Nhà máy (NM)</option>
+          <option value="XG" ${editing && editing.nguon === 'XG' ? 'selected' : ''}>Xưởng (XG)</option>
+          <option value="TH" ${editing && editing.nguon === 'TH' ? 'selected' : ''}>Thu hồi (TH)</option>
+        </select>
+      </label></div>
+      <div class="full" style="position:relative;">
+        <label>Vật tư
+          <input type="text" id="ledger-import-material-input" autocomplete="off" placeholder="Gõ tên vật tư để tìm..."
+            value="${editing ? escapeAttr(materialDisplayLabel({ name: editing.material_name, don_vi_tinh: editing.material_unit })) : ''}">
+        </label>
+        <input type="hidden" id="ledger-import-material-value" value="${editing ? editing.material_id : ''}">
+        <div id="ledger-import-material-results" class="combo-results" style="display:none;"></div>
+      </div>
+      <div><label>Số lượng
+        <input type="number" name="quantity" min="0" step="any" value="${editing ? editing.quantity : ''}">
+      </label></div>
+      <div class="full"><label>Ghi chú
+        <input type="text" name="ghi_chu" value="${editing ? escapeAttr(editing.ghi_chu || '') : ''}">
+      </label></div>
+      <div class="modal-actions full" style="margin-top:4px;">
+        ${editing ? '<button type="button" class="btn btn-ghost" id="ledger-import-cancel-edit">Hủy sửa</button>' : ''}
+        <button type="submit" class="btn btn-primary">${editing ? 'Lưu' : '+ Thêm dòng nhập'}</button>
+      </div>
+    </form>
+
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+      <label style="font-size:12.5px; color:var(--ink-dim);">Từ ngày
+        <input type="date" id="ledger-import-from" value="${escapeAttr(ledgerImportFilter.from)}" style="display:block; margin-top:4px; padding:7px 9px; border:1.5px solid var(--border); border-radius:7px;">
+      </label>
+      <label style="font-size:12.5px; color:var(--ink-dim);">Đến ngày
+        <input type="date" id="ledger-import-to" value="${escapeAttr(ledgerImportFilter.to)}" style="display:block; margin-top:4px; padding:7px 9px; border:1.5px solid var(--border); border-radius:7px;">
+      </label>
+    </div>
+
+    <div style="max-height:36vh; overflow-y:auto; border:1px solid var(--border); border-radius:8px;">
+      ${items.length ? items.map(it => `
+        <div class="list-item" data-id="${it.id}" style="padding:10px 12px; cursor:pointer;">
+          <div class="list-item-main">
+            <div class="list-item-title">${escapeHtml(it.material_name)}${it.material_unit ? ` <span style="color:var(--ink-dim); font-weight:400; font-size:12px;">(${escapeHtml(it.material_unit)})</span>` : ''}</div>
+            <div class="list-item-sub">${escapeHtml(it.ngay_nhap || '—')} · SL ${it.quantity} · ${escapeHtml(NGUON_LABELS[it.nguon] || it.nguon)}${it.ghi_chu ? ' · ' + escapeHtml(it.ghi_chu) : ''}</div>
+          </div>
+          <div style="display:flex; gap:4px; flex-shrink:0;">
+            <span class="badge badge-ok">${escapeHtml(it.nguon)}</span>
+            <button type="button" class="btn btn-danger btn-sm" data-act="del" data-id="${it.id}">Xóa</button>
+          </div>
+        </div>
+      `).join('') : '<div class="empty-state">Chưa có dòng nhập nào phù hợp bộ lọc</div>'}
+    </div>
+  `;
+
+  // Combobox chọn vật tư cho form nhập
+  const matInput = document.getElementById('ledger-import-material-input');
+  const matValue = document.getElementById('ledger-import-material-value');
+  const matResults = document.getElementById('ledger-import-material-results');
+  function renderMatResults(query) {
+    const q = query.trim().toLowerCase();
+    const matches = !q ? sortedMaterials.slice(0, 40) : sortedMaterials.filter(m => materialDisplayLabel(m).toLowerCase().includes(q)).slice(0, 40);
+    matResults.innerHTML = matches.length
+      ? matches.map(m => `<div class="combo-result-item" data-mid="${m.id}">${escapeHtml(materialDisplayLabel(m))}</div>`).join('')
+      : `<div class="combo-empty">Không tìm thấy vật tư nào</div>`;
+    matResults.style.display = 'block';
+    matResults.querySelectorAll('.combo-result-item').forEach(item => {
+      item.addEventListener('mousedown', (ev) => {
+        ev.preventDefault();
+        const m = state.materials.find(x => String(x.id) === item.dataset.mid);
+        matInput.value = materialDisplayLabel(m);
+        matValue.value = m.id;
+        matResults.style.display = 'none';
+      });
+    });
+  }
+  matInput.addEventListener('focus', () => renderMatResults(matInput.value));
+  matInput.addEventListener('input', () => { matValue.value = ''; renderMatResults(matInput.value); });
+  matInput.addEventListener('blur', () => { setTimeout(() => { matResults.style.display = 'none'; }, 150); });
+
+  document.getElementById('ledger-import-from').addEventListener('change', (e) => { ledgerImportFilter.from = e.target.value; renderLedgerBody(); });
+  document.getElementById('ledger-import-to').addEventListener('change', (e) => { ledgerImportFilter.to = e.target.value; renderLedgerBody(); });
+
+  const cancelEditBtn = document.getElementById('ledger-import-cancel-edit');
+  if (cancelEditBtn) cancelEditBtn.addEventListener('click', () => { ledgerEditingImport = null; renderLedgerBody(); });
+
+  body.querySelectorAll('[data-act="del"]').forEach(btn => {
+    btn.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      if (!confirm('Xóa dòng nhập này?')) return;
+      try {
+        await api('/material-ledger/imports/' + btn.dataset.id, { method: 'DELETE' });
+        toast('Đã xóa'); renderLedgerBody();
+      } catch (err) { toast(err.message); }
+    });
+  });
+  body.querySelectorAll('.list-item').forEach(row => {
+    row.addEventListener('click', () => {
+      const it = items.find(x => String(x.id) === row.dataset.id);
+      if (it) { ledgerEditingImport = it; renderLedgerBody(); }
+    });
+  });
+
+  document.getElementById('ledger-import-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!matValue.value) { toast('Vui lòng chọn 1 vật tư từ danh sách gợi ý'); matInput.focus(); return; }
+    const body2 = Object.fromEntries(new FormData(e.target).entries());
+    body2.material_id = matValue.value;
+    try {
+      if (editing) await api('/material-ledger/imports/' + editing.id, { method: 'PUT', body: JSON.stringify(body2) });
+      else await api('/material-ledger/imports', { method: 'POST', body: JSON.stringify(body2) });
+      ledgerEditingImport = null;
+      toast('Đã lưu'); renderLedgerBody();
+    } catch (err) { toast(err.message); }
+  });
+}
+
+// ----- Tab XUẤT (chỉ xem) -----
+async function renderLedgerXuat(body) {
+  const params = new URLSearchParams();
+  if (ledgerExportFilter.from) params.set('from', ledgerExportFilter.from);
+  if (ledgerExportFilter.to) params.set('to', ledgerExportFilter.to);
+  if (ledgerExportFilter.export_type) params.set('export_type', ledgerExportFilter.export_type);
+  let items = [];
+  try {
+    const res = await api('/material-ledger/exports?' + params.toString());
+    items = res.items || [];
+  } catch (err) {
+    body.innerHTML = `<div class="empty-state">Có lỗi khi tải: ${escapeHtml(err.message)}</div>`;
+    return;
+  }
+
+  const chip = (val, label) => `<button type="button" class="chip ledger-exp-chip ${ledgerExportFilter.export_type === val ? 'active' : ''}" data-val="${escapeAttr(val)}">${escapeHtml(label)}</button>`;
+
+  body.innerHTML = `
+    <p style="font-size:12px; color:var(--ink-dim); margin:10px 0;">Danh sách này tự lấy từ lịch sử Bảo trì — bấm vào 1 dòng để mở đúng bản ghi bảo trì đó nếu cần sửa.</p>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+      <label style="font-size:12.5px; color:var(--ink-dim);">Từ ngày
+        <input type="date" id="ledger-export-from" value="${escapeAttr(ledgerExportFilter.from)}" style="display:block; margin-top:4px; padding:7px 9px; border:1.5px solid var(--border); border-radius:7px;">
+      </label>
+      <label style="font-size:12.5px; color:var(--ink-dim);">Đến ngày
+        <input type="date" id="ledger-export-to" value="${escapeAttr(ledgerExportFilter.to)}" style="display:block; margin-top:4px; padding:7px 9px; border:1.5px solid var(--border); border-radius:7px;">
+      </label>
+    </div>
+    <div class="filter-chips">
+      ${chip('', 'Tất cả loại')}
+      ${chip('SC', 'Thay thế SC')}
+      ${chip('TK', 'Thay thế TK')}
+    </div>
+    <div style="max-height:40vh; overflow-y:auto; border:1px solid var(--border); border-radius:8px; margin-top:8px;">
+      ${items.length ? items.map(it => `
+        <div class="list-item" data-logid="${it.log_id}" style="padding:10px 12px; cursor:pointer;">
+          <div class="list-item-main">
+            <div class="list-item-title"><span class="engine-code">${escapeHtml(it.ma_thiet_bi || '')}</span> ${escapeHtml(it.material_name)}${it.material_unit ? ` <span style="color:var(--ink-dim); font-weight:400; font-size:12px;">(${escapeHtml(it.material_unit)})</span>` : ''}</div>
+            <div class="list-item-sub">${escapeHtml(it.ngay_xuat || '—')} · SL ${it.quantity}${it.mo_ta ? ' · ' + escapeHtml(it.mo_ta) : ''}${it.nguoi_thuc_hien ? ' · ' + escapeHtml(it.nguoi_thuc_hien) : ''}</div>
+          </div>
+          <span class="badge ${it.export_type === 'TK' ? 'badge-warn' : 'badge-ok'}">${it.export_type === 'TK' ? 'TK' : 'SC'}</span>
+        </div>
+      `).join('') : '<div class="empty-state">Chưa có dữ liệu xuất phù hợp bộ lọc</div>'}
+    </div>
+  `;
+
+  document.getElementById('ledger-export-from').addEventListener('change', (e) => { ledgerExportFilter.from = e.target.value; renderLedgerBody(); });
+  document.getElementById('ledger-export-to').addEventListener('change', (e) => { ledgerExportFilter.to = e.target.value; renderLedgerBody(); });
+  body.querySelectorAll('.ledger-exp-chip').forEach(c => c.addEventListener('click', () => {
+    ledgerExportFilter.export_type = c.dataset.val;
+    renderLedgerBody();
+  }));
+  body.querySelectorAll('.list-item').forEach(row => {
+    row.addEventListener('click', async () => {
+      try {
+        const log = await api('/maintenance/' + row.dataset.logid);
+        closeModal();
+        openLogForm(log);
+      } catch (err) { toast(err.message); }
+    });
   });
 }
 // Trạng thái + nhật ký đồng bộ OneDrive, hiện trong tab Dữ liệu (mục "Đồng bộ OneDrive")
