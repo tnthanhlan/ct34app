@@ -21,8 +21,13 @@ router.get('/', (req, res) => {
   }
 
   const total = db.prepare(`SELECT COUNT(*) c FROM engines ${where}`).get(...params).c;
-  const rows = db.prepare(`SELECT * FROM engines ${where} ORDER BY id ASC LIMIT ? OFFSET ?`)
-    .all(...params, limit, offset);
+  // Sắp xếp theo mã thiết bị (A-Z, không phân biệt hoa/thường) để dễ dò tìm - máy không có mã
+  // thì xếp xuống cuối thay vì chen giữa danh sách.
+  const rows = db.prepare(`
+    SELECT * FROM engines ${where}
+    ORDER BY (ma_thiet_bi IS NULL OR ma_thiet_bi = '') ASC, ma_thiet_bi COLLATE NOCASE ASC, id ASC
+    LIMIT ? OFFSET ?
+  `).all(...params, limit, offset);
 
   res.json({ total, page: Number(page), pageSize: limit, items: rows.map(engineToObject) });
 });

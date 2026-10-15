@@ -201,6 +201,22 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .list-item-title { font-weight: 600; font-size: 14.5px; }
 .list-item-sub { font-size: 12.5px; color: var(--ink-dim); margin-top: 2px; }
 
+/* Danh sách Động cơ: gọn hơn (bớt đệm dọc) + có tiêu đề nhóm A-Z và thanh nhảy nhanh theo chữ
+   cái, để dò mã thiết bị nhanh hơn thay vì phải cuộn qua 1 khối dài không phân đoạn. */
+#engine-list .list-item { padding: 8px 4px; }
+.engine-group-header {
+  grid-column: 1 / -1;
+  font-weight: 700; font-size: 11.5px; letter-spacing: .6px; text-transform: uppercase;
+  color: var(--steel); padding: 9px 4px 3px; margin-top: 2px;
+}
+.engine-group-header:first-child { margin-top: 0; }
+.az-jumpbar { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+.az-chip {
+  border: 1.5px solid var(--border); background: var(--surface); color: var(--ink-dim);
+  border-radius: 7px; padding: 3px 9px; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.az-chip:hover { background: var(--surface-2); color: var(--steel); border-color: var(--steel); }
+
 .badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
 .badge-warn { background: var(--amber-bg); color: var(--amber); }
 .badge-danger { background: var(--red-bg); color: var(--red); }

@@ -283,6 +283,7 @@ async function renderEngines(query = '') {
     <div class="search-row">
       <input type="text" id="engine-search" placeholder="Tìm mã thiết bị hoặc bất kỳ thông tin nào..." value="${escapeHtml(query)}">
     </div>
+    <div class="az-jumpbar" id="engine-jumpbar"></div>
     <div class="card" style="padding:0;" id="engine-list"></div>
     ${state.user.role === 'admin' ? '<button class="fab" id="add-engine-btn">+</button>' : ''}
   `;
@@ -295,6 +296,14 @@ async function renderEngines(query = '') {
   if (addBtn) addBtn.addEventListener('click', () => openEngineForm());
 }
 
+// Lấy chữ cái (A-Z) hoặc số đại diện đầu mã thiết bị, dùng để nhóm danh sách cho dễ dò theo
+// thứ tự - bỏ dấu tiếng Việt trước khi lấy (phòng khi mã có dấu), mã không có chữ/số thì gộp vào "#".
+function engineGroupLetter(code) {
+  if (!code) return '#';
+  const ch = code.trim().charAt(0).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return /[A-Z0-9]/.test(ch) ? ch : '#';
+}
+
 // Chỉ vẽ lại phần danh sách kết quả (không đụng tới khung/ô tìm kiếm), để gõ tìm kiếm không bị mất focus
 async function renderEngineListOnly(query = '') {
   const { items } = await api('/engines?q=' + encodeURIComponent(query) + '&pageSize=1000');
@@ -302,22 +311,53 @@ async function renderEngineListOnly(query = '') {
   items.forEach(e => state.engineMap[e.id] = e);
 
   const list = document.getElementById('engine-list');
+  const jumpbar = document.getElementById('engine-jumpbar');
   if (!list) return; // nguoi dung da chuyen tab truoc khi ket qua ve kip
+
   if (!items.length) {
+    if (jumpbar) jumpbar.innerHTML = '';
     list.innerHTML = `<div class="empty-state"><div class="empty-icon">⚙</div>Chưa có động cơ nào.<br>Vào tab "Dữ liệu" để nhập từ Excel.</div>`;
-  } else {
-    list.innerHTML = items.map(e => {
-      const { title, sub } = engineTitleAndSub(e);
-      return `
+    return;
+  }
+
+  // Backend đã sắp theo A-Z (mã thiết bị) nên ở đây chỉ cần chèn thêm tiêu đề nhóm mỗi khi sang
+  // chữ cái mới - giúp danh sách gọn, dễ dò hơn thay vì 1 khối dài không phân đoạn.
+  let currentLetter = null;
+  const groupLetters = [];
+  list.innerHTML = items.map(e => {
+    const { title, sub } = engineTitleAndSub(e);
+    const code = e.ma_thiet_bi || '';
+    const letter = engineGroupLetter(code);
+    let headerHtml = '';
+    if (letter !== currentLetter) {
+      currentLetter = letter;
+      groupLetters.push(letter);
+      headerHtml = `<div class="engine-group-header" id="engine-group-${letter}">${letter}</div>`;
+    }
+    return `${headerHtml}
       <div class="list-item" data-id="${e.id}">
         <div class="list-item-main">
-          <div class="list-item-title"><span class="engine-code">${escapeHtml(e.ma_thiet_bi || '—')}</span> ${escapeHtml(title)}</div>
-          <div class="list-item-sub">${escapeHtml(sub || '—')}</div>
+          <div class="list-item-title"><span class="engine-code">${escapeHtml(code || '—')}</span> ${escapeHtml(title)}</div>
+          ${sub ? `<div class="list-item-sub">${escapeHtml(sub)}</div>` : ''}
         </div>
       </div>
     `;
-    }).join('');
-    list.querySelectorAll('.list-item').forEach(el => el.addEventListener('click', () => openEngineDetail(el.dataset.id)));
+  }).join('');
+  list.querySelectorAll('.list-item').forEach(el => el.addEventListener('click', () => openEngineDetail(el.dataset.id)));
+
+  // Thanh nhảy nhanh theo chữ cái - chỉ hiện khi KHÔNG đang tìm kiếm và có từ 2 nhóm trở lên,
+  // bấm vào 1 chữ sẽ cuộn thẳng tới nhóm đó, đỡ phải cuộn dò từng dòng.
+  if (jumpbar) {
+    if (!query && groupLetters.length > 1) {
+      jumpbar.innerHTML = groupLetters.map(l => `<button type="button" class="az-chip" data-letter="${l}">${l}</button>`).join('');
+      jumpbar.querySelectorAll('.az-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.getElementById('engine-group-' + btn.dataset.letter)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
+    } else {
+      jumpbar.innerHTML = '';
+    }
   }
 }
 
