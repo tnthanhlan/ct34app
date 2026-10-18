@@ -64,6 +64,42 @@ function setupRcloneConfig() {
 
 const onedriveReady = setupRcloneConfig();
 
+// File xuất của add-on này luôn có dạng "baotri_ct34_YYYY-MM-DD_HHmm.xlsx" - chỉ dọn những file
+// khớp đúng dạng này trên OneDrive, không đụng tới file nào khác người dùng tự để trong cùng thư
+// mục (phòng khi thư mục onedrive_remote_path không phải thư mục riêng chỉ để chứa file xuất).
+const EXPORT_FILENAME_RE = /^baotri_ct34_\d{4}-\d{2}-\d{2}_\d{4}\.xlsx$/i;
+
+// Sau khi đồng bộ xong 1 file lên OneDrive, xoá hết các file xuất CŨ khác đang có trong cùng thư
+// mục, chỉ giữ lại đúng file vừa đồng bộ - vì file này đã gồm toàn bộ lịch sử mọi năm rồi (xem
+// exportWeekly.js), không cần giữ nhiều bản cũ chồng nhau làm nặng OneDrive.
+function pruneOldRemoteFiles(keepFilename) {
+  return new Promise((resolve) => {
+    execFile('rclone', ['--config', RCLONE_CONF_PATH, 'lsf', `onedrive:${ONEDRIVE_REMOTE_PATH}`, '--files-only'],
+      { timeout: 30000, maxBuffer: 5 * 1024 * 1024 }, (err, stdout) => {
+        if (err) {
+          onedriveLog(`Không liệt kê được file trên OneDrive để dọn bớt bản cũ: ${err.message}`);
+          return resolve();
+        }
+        const staleFiles = stdout.split('\n').map(f => f.trim()).filter(Boolean)
+          .filter(f => f !== keepFilename && EXPORT_FILENAME_RE.test(f));
+        if (!staleFiles.length) return resolve();
+        (async () => {
+          for (const f of staleFiles) {
+            await new Promise((res) => {
+              execFile('rclone', ['--config', RCLONE_CONF_PATH, 'deletefile', `onedrive:${ONEDRIVE_REMOTE_PATH}/${f}`],
+                { timeout: 30000 }, (delErr) => {
+                  if (delErr) onedriveLog(`Không xoá được file cũ "${f}" trên OneDrive: ${delErr.message}`);
+                  else onedriveLog(`Đã xoá file cũ "${f}" trên OneDrive (chỉ giữ lại bản mới nhất).`);
+                  res();
+                });
+            });
+          }
+          resolve();
+        })();
+      });
+  });
+}
+
 // Tra ve Promise (khong bao gio reject - luon resolve, loi thi da tu ghi vao ONEDRIVE_LOG roi)
 // de noi goi co the "await" tung file mot thay vi ban dong loat.
 function syncFileToOnedrivePromise(localFilePath) {
@@ -79,7 +115,7 @@ function syncFileToOnedrivePromise(localFilePath) {
     ];
     // Timeout wrapper cao hon nhieu so voi --timeout cua rclone, de rclone luon la ben tu bao loi
     // truoc (co ly do ro rang), khong bi Node giet ngang giua chung (mat het thong tin loi that).
-    execFile('rclone', args, { timeout: 180000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile('rclone', args, { timeout: 180000, maxBuffer: 10 * 1024 * 1024 }, async (err, stdout, stderr) => {
       if (err) {
         // Uu tien lay cac dong co chua tu khoa loi (ERROR/Failed/Fatal) - vi log -vv rat dai va
         // phan lon la dong debug khoi dong o dau, ly do loi that thuong nam o CUOI log.
@@ -102,6 +138,11 @@ function syncFileToOnedrivePromise(localFilePath) {
         onedriveLog(`LỖI khi đồng bộ "${path.basename(localFilePath)}": ${detail}`);
       } else {
         onedriveLog(`Đã đồng bộ "${path.basename(localFilePath)}" lên OneDrive (${ONEDRIVE_REMOTE_PATH}).`);
+        // Chỉ dọn bớt file cũ khi đồng bộ file MỚI thành công, và chỉ với file đúng tên xuất tự
+        // động (bỏ qua nếu ai đó đồng bộ 1 file lẻ tên khác, tránh dọn nhầm).
+        if (EXPORT_FILENAME_RE.test(path.basename(localFilePath))) {
+          await pruneOldRemoteFiles(path.basename(localFilePath));
+        }
       }
       resolve();
     });

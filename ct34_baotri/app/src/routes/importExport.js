@@ -416,7 +416,10 @@ router.post('/onedrive-sync-now', requireAdmin, (req, res) => {
   try {
     const dir = process.env.EXPORT_DIR || '/share/baotri_exports';
     fs.mkdirSync(dir, { recursive: true });
-    const files = fs.readdirSync(dir).filter(f => f.endsWith('.xlsx'));
+    // Sắp theo tên (= theo thời gian, vì tên file có dạng ...YYYY-MM-DD_HHmm.xlsx) để file mới
+    // nhất luôn được đồng bộ SAU CÙNG - vì mỗi lần đồng bộ xong sẽ tự dọn các file xuất cũ khác
+    // trên OneDrive (xem onedrive.js), cần đảm bảo bản còn lại cuối cùng đúng là bản mới nhất.
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.xlsx')).sort();
     syncFilesSequentially(files.map(f => path.join(dir, f))); // khong await - chay nen, ket qua xem qua nhat ky
     res.json({ ok: true, count: files.length });
   } catch (e) {

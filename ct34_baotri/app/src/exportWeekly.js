@@ -115,9 +115,14 @@ async function runWeeklyExport() {
 
   sendLightweightEmail(); // Gửi email bản nhẹ (xem hàm ở trên) nếu đã bật - không chặn việc trả kết quả
 
+  // Chỉ giữ lại đúng bản vừa xuất trên máy chủ HA (y hệt cách đã làm cho OneDrive ở bản 7.9.4) -
+  // file này đã gồm toàn bộ lịch sử mọi năm rồi nên giữ thêm nhiều bản cũ chỉ tổ chiếm chỗ, trong
+  // khi dữ liệu thật vẫn luôn an toàn trong database (file Excel chỉ là bản xuất/tải về, không
+  // phải nơi lưu trữ chính).
   const files = fs.readdirSync(exportDir).filter(f => f.endsWith('.xlsx')).sort();
-  while (files.length > 30) {
-    fs.unlinkSync(path.join(exportDir, files.shift()));
+  for (const f of files) {
+    if (f === filename) continue;
+    fs.unlinkSync(path.join(exportDir, f));
   }
 
   return filePath;

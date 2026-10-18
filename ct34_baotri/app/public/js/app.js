@@ -1607,7 +1607,7 @@ async function renderData() {
 
     <div class="section-title">Xuất Excel</div>
     <div class="card">
-      <p style="font-size:13px; color:var(--ink-dim); margin-top:0;">Hệ thống tự động xuất file vào 23h50 Chủ nhật hàng tuần, lưu trong thư mục chia sẻ <code>/share/baotri_exports</code>. Bạn cũng có thể xuất ngay tại đây.</p>
+      <p style="font-size:13px; color:var(--ink-dim); margin-top:0;">Hệ thống tự động xuất file vào 23h50 Chủ nhật hàng tuần, lưu trong thư mục chia sẻ <code>/share/baotri_exports</code>. Bạn cũng có thể xuất ngay tại đây. Mỗi lần xuất xong, bản cũ trong thư mục này sẽ tự bị xoá, <b>chỉ giữ lại bản mới nhất</b> cho đỡ đầy máy chủ — dữ liệu thật vẫn luôn nằm an toàn trong database của app, file Excel chỉ là bản xuất/tải về.</p>
       <button class="btn btn-primary btn-block" id="export-now-btn">Xuất Excel ngay</button>
       <div class="section-title" style="margin-top:16px;">File đã xuất</div>
       <div id="export-file-list"></div>
@@ -1617,7 +1617,9 @@ async function renderData() {
     <div class="card">
       <p style="font-size:13px; color:var(--ink-dim); margin-top:0;">
         Ngay sau khi xuất file (tự động hằng tuần hoặc bấm "Xuất Excel ngay" ở trên), hệ thống tự đẩy file đó
-        lên thư mục OneDrive đã cấu hình — qua Internet, không cần máy tính nào bật hay cùng mạng LAN.
+        lên thư mục OneDrive đã cấu hình — qua Internet, không cần máy tính nào bật hay cùng mạng LAN. Mỗi lần
+        đồng bộ xong, hệ thống tự xoá các file xuất cũ khác trong thư mục đó, <b>chỉ giữ lại bản mới nhất</b>
+        (file này đã gồm toàn bộ lịch sử mọi năm rồi nên không cần giữ nhiều bản chồng nhau).
         Bật/điền "onedrive_backup_enabled", "onedrive_token", "onedrive_remote_path"... trong tab
         <b>Configuration</b> của add-on này (dùng lại đúng token/drive_id đã cấu hình cho app Chấm công cũng
         được — chỉ cần đổi "onedrive_remote_path" sang thư mục riêng cho Bảo trì).
