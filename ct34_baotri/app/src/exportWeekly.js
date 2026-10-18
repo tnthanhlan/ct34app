@@ -128,4 +128,26 @@ async function runWeeklyExport() {
   return filePath;
 }
 
-module.exports = { runWeeklyExport, sendLightweightEmail };
+// Dọn 1 lần ngay lúc server khởi động (= mỗi lần update/restart add-on) - để nếu thư mục đang
+// tồn đọng nhiều file cũ từ TRƯỚC khi có tính năng "chỉ giữ bản mới nhất" (bản 7.9.5), các file
+// đó được dọn ngay khi update xong, không phải đợi tới lần xuất kế tiếp (Chủ nhật tới, hoặc tự
+// bấm "Xuất Excel ngay") mới thấy có tác dụng.
+function pruneStaleLocalExportsOnStartup() {
+  try {
+    const exportDir = process.env.EXPORT_DIR || '/share/baotri_exports';
+    fs.mkdirSync(exportDir, { recursive: true });
+    const files = fs.readdirSync(exportDir).filter(f => f.endsWith('.xlsx')).sort();
+    // Giữ lại file CUỐI CÙNG sau khi sắp xếp (= file có tên mới nhất, vì tên file có dạng
+    // ...YYYY-MM-DD_HHmm.xlsx), xoá hết các file còn lại.
+    for (let i = 0; i < files.length - 1; i++) {
+      fs.unlinkSync(path.join(exportDir, files[i]));
+    }
+    if (files.length > 1) {
+      console.log(`[baotri_ct34] Đã dọn ${files.length - 1} file xuất cũ trong ${exportDir} lúc khởi động, chỉ giữ lại "${files[files.length - 1]}".`);
+    }
+  } catch (e) {
+    console.error('[baotri_ct34] Lỗi khi dọn file xuất cũ lúc khởi động:', e.message);
+  }
+}
+
+module.exports = { runWeeklyExport, sendLightweightEmail, pruneStaleLocalExportsOnStartup };

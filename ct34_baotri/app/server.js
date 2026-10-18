@@ -5,6 +5,7 @@ const fs = require('fs');
 
 const { seedUsers, requireAuth } = require('./src/auth');
 const { startCron } = require('./src/cron');
+const { pruneStaleLocalExportsOnStartup } = require('./src/exportWeekly');
 
 const authRoutes = require('./src/routes/auth');
 const engineRoutes = require('./src/routes/engines');
@@ -71,4 +72,8 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`[baotri_ct34] Server dang chay tai port ${PORT}`);
   startCron();
+  // Don bot file xuat cu con ton dong (tu truoc khi co tinh nang "chi giu ban moi nhat") ngay
+  // khi server khoi dong - de update/restart add-on la thay tac dung luon, khong phai doi toi
+  // lan xuat ke tiep. Phan OneDrive tu dong don luc module onedrive.js duoc require (xem file do).
+  pruneStaleLocalExportsOnStartup();
 });

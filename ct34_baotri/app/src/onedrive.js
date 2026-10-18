@@ -174,4 +174,26 @@ function getOnedriveStatus() {
   };
 }
 
+// Dọn 1 lần ngay lúc server khởi động (= mỗi lần update/restart add-on) - nếu thư mục OneDrive
+// đang tồn đọng nhiều file cũ từ TRƯỚC khi có tính năng "chỉ giữ bản mới nhất" (bản 7.9.4), dọn
+// ngay khi update xong, không phải đợi tới lần đồng bộ kế tiếp mới thấy có tác dụng.
+function pruneStaleRemoteExportsOnStartup() {
+  if (!onedriveReady) return;
+  execFile('rclone', ['--config', RCLONE_CONF_PATH, 'lsf', `onedrive:${ONEDRIVE_REMOTE_PATH}`, '--files-only'],
+    { timeout: 30000, maxBuffer: 5 * 1024 * 1024 }, (err, stdout) => {
+      if (err) {
+        onedriveLog(`Không liệt kê được file trên OneDrive để dọn lúc khởi động: ${err.message}`);
+        return;
+      }
+      // Giữ lại file có TÊN mới nhất (tên file có dạng ...YYYY-MM-DD_HHmm.xlsx nên sắp theo tên
+      // = sắp theo thời gian), xoá hết các file xuất cũ khác đang tồn đọng.
+      const matching = stdout.split('\n').map(f => f.trim()).filter(Boolean)
+        .filter(f => EXPORT_FILENAME_RE.test(f)).sort();
+      if (matching.length <= 1) return;
+      const keep = matching[matching.length - 1];
+      pruneOldRemoteFiles(keep);
+    });
+}
+pruneStaleRemoteExportsOnStartup();
+
 module.exports = { syncFileToOnedrive, syncFilesSequentially, getOnedriveStatus };
