@@ -821,20 +821,17 @@ function findCoverPartner(state, dateStr, absenteeId) {
   return pair[0] === absenteeId ? pair[1] : pair[0];
 }
 
-// Goi dich vu notify cua Home Assistant qua Supervisor API (http://supervisor/core/api/...).
-// Dung module http co san cua Node, khong them dependency moi.
-function sendHaNotify(title, message) {
+// Goi 1 dich vu bat ky cua Home Assistant qua Supervisor API (http://supervisor/core/api/services/<domain>/<service>).
+// Dung chung cho ca notify.* (gui push ve dien thoai) va persistent_notification.create (ghi vao chuong
+// thong bao trong chinh giao dien HA). Dung module http co san cua Node, khong them dependency moi.
+function callHaService(domain, service, data, logLabel) {
   return new Promise((resolve) => {
-    if (!HA_NOTIFY_SERVICE) {
-      console.warn('[nhắc-ca] Chưa điền "Dịch vụ thông báo HA" (ha_notify_service) trong Configuration của add-on — bỏ qua gửi.');
-      return resolve(false);
-    }
     const token = getSupervisorToken();
     if (!token) {
-      console.warn('[nhắc-ca] Thiếu SUPERVISOR_TOKEN (đã thử cả process.env và file container_environment của s6) — cần bật quyền "Home Assistant API" cho add-on này (homeassistant_api: true) để Supervisor cấp token.');
+      console.warn(`[nhắc-ca] Thiếu SUPERVISOR_TOKEN (đã thử cả process.env và file container_environment của s6) — cần bật quyền "Home Assistant API" cho add-on này (homeassistant_api: true) để Supervisor cấp token. (Bỏ qua gọi ${domain}.${service})`);
       return resolve(false);
     }
-    const payload = JSON.stringify({ title, message });
+    const payload = JSON.stringify(data);
     // HA_SUPERVISOR_ADDR_OVERRIDE la bien noi bo CHI de phuc vu test cuc bo (gia lap Supervisor bang
     // 1 HTTP server tren localhost) - khong phai option cua add-on, khong xuat hien trong config.yaml.
     // San xuat luon goi dung 'supervisor' (host noi bo cua Supervisor trong mang Docker cua HA).
@@ -842,7 +839,7 @@ function sendHaNotify(title, message) {
     const req = http.request({
       hostname: ovHost || 'supervisor',
       port: ovPort || undefined,
-      path: `/core/api/services/notify/${encodeURIComponent(HA_NOTIFY_SERVICE)}`,
+      path: `/core/api/services/${domain}/${encodeURIComponent(service)}`,
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -855,19 +852,37 @@ function sendHaNotify(title, message) {
       res.on('data', chunk => { body += chunk; });
       res.on('end', () => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          console.log(`[nhắc-ca] Đã gửi thông báo tới ${HA_NOTIFY_SERVICE}: "${title}"`);
+          console.log(`[nhắc-ca] Đã gọi ${logLabel || `${domain}.${service}`} thành công.`);
           resolve(true);
         } else {
-          console.error(`[nhắc-ca] Gửi thông báo thất bại, HTTP ${res.statusCode}: ${body.slice(0, 300)}`);
+          console.error(`[nhắc-ca] Gọi ${logLabel || `${domain}.${service}`} thất bại, HTTP ${res.statusCode}: ${body.slice(0, 300)}`);
           resolve(false);
         }
       });
     });
-    req.on('error', (e) => { console.error('[nhắc-ca] Lỗi khi gọi notify service:', e.message); resolve(false); });
-    req.on('timeout', () => { req.destroy(); console.error('[nhắc-ca] Gọi notify service bị timeout.'); resolve(false); });
+    req.on('error', (e) => { console.error(`[nhắc-ca] Lỗi khi gọi ${logLabel || `${domain}.${service}`}:`, e.message); resolve(false); });
+    req.on('timeout', () => { req.destroy(); console.error(`[nhắc-ca] Gọi ${logLabel || `${domain}.${service}`} bị timeout.`); resolve(false); });
     req.write(payload);
     req.end();
   });
+}
+
+// Gui push ve dien thoai qua dich vu notify.* da cau hinh trong ha_notify_service.
+function sendHaNotify(title, message) {
+  if (!HA_NOTIFY_SERVICE) {
+    console.warn('[nhắc-ca] Chưa điền "Dịch vụ thông báo HA" (ha_notify_service) trong Configuration của add-on — bỏ qua gửi push.');
+    return Promise.resolve(false);
+  }
+  return callHaService('notify', HA_NOTIFY_SERVICE, { title, message }, `notify tới ${HA_NOTIFY_SERVICE}: "${title}"`);
+}
+
+// Ghi 1 thong bao vao chuong thong bao (Persistent Notification) ngay trong giao dien Home Assistant,
+// de xem lai duoc sau nay (khac voi push tren dien thoai - doc/vuot xong la mat). Dung chung 1
+// notification_id cho moi lan nhac ca cung 1 nguoi/cung ngay/cung buoi (key) de neu co dao ca sua lai
+// thi GHI DE len thong bao cu thay vi chong chat thanh nhieu ban; goi lai nhieu lan voi cung id cung
+// khong tao thong bao trung, nen an toan khi retry.
+function createPersistentNotification(title, message, notificationId) {
+  return callHaService('persistent_notification', 'create', { title, message, notification_id: notificationId }, `persistent_notification tới HA: "${title}"`);
 }
 
 function addDaysStr(dateStr, delta) {
@@ -943,6 +958,9 @@ async function checkShiftReminders() {
           changed = true;
           sentCount++;
         }
+        // Luon thu ghi them vao chuong thong bao HA (doc lap voi push) - goi lai voi cung notification_id
+        // se tu GHI DE, khong chong thong bao, nen du push loi van an toan khi thu lai lan quet sau.
+        await createPersistentNotification(title, message, `ct34_nhacca_${key}`);
       }
     }
     // Don dep cac key qua cu (hon 14 ngay) de state khong phinh to theo thoi gian.
@@ -966,8 +984,13 @@ cron.schedule('0 7,19 * * *', checkShiftReminders);
 // (SUPERVISOR_TOKEN, ten dich vu notify, dien thoai co nhan duoc khong) ma KHONG can doi den 7h/19h that.
 // Khong dung gi den du lieu nhac-ca thuc (khong ghi sentMap), chi la 1 phep thu doc lap.
 app.post('/api/admin/test-ha-notify', requireAuth, requireAdmin, async (req, res) => {
-  const ok = await sendHaNotify('Test thông báo CT34', `Đây là tin nhắn thử từ add-on Chấm công & lương - CT34, gửi lúc ${new Date().toLocaleString('vi-VN')}. Nếu anh nhận được tin này nghĩa là đường gửi thông báo hoạt động tốt.`);
-  if (ok) res.json({ ok: true, message: `Đã gửi thành công tới dịch vụ "${HA_NOTIFY_SERVICE || '(chưa cấu hình)'}". Kiểm tra điện thoại xem có nhận được không.` });
+  const testTitle = 'Test thông báo CT34';
+  const testMessage = `Đây là tin nhắn thử từ add-on Chấm công & lương - CT34, gửi lúc ${new Date().toLocaleString('vi-VN')}. Nếu anh nhận được tin này nghĩa là đường gửi thông báo hoạt động tốt.`;
+  const ok = await sendHaNotify(testTitle, testMessage);
+  // Dung chung 1 notification_id co dinh cho tin test, bam thu nhieu lan chi ghi de 1 ban, khong
+  // chong chat trong chuong thong bao cua HA.
+  await createPersistentNotification(testTitle, testMessage, 'ct34_test_notify');
+  if (ok) res.json({ ok: true, message: `Đã gửi thành công tới dịch vụ "${HA_NOTIFY_SERVICE || '(chưa cấu hình)'}" (push điện thoại) và ghi vào chuông thông báo của Home Assistant. Kiểm tra điện thoại và chuông thông báo trong HA xem có nhận được không.` });
   // Dung field "error" (khong phai "message") cho nhanh ca that bai, vi ham api() o client chi doc j.error khi res khong ok.
   else res.status(500).json({ ok: false, error: 'Gửi thất bại - xem Log của add-on để biết lý do cụ thể (thiếu SUPERVISOR_TOKEN, chưa điền ha_notify_service, hoặc tên dịch vụ sai).' });
 });
