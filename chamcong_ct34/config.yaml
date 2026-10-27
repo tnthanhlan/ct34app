@@ -1,5 +1,5 @@
 name: "Chấm công & lương - CT34"
-version: "1.13.3"
+version: "1.14.1"
 slug: "chamcong_ct34"
 description: "He thong cham cong & luong ca kip, xac thuc that (Admin/User), tu dong xuat file CSV hang thang, tu mang theo Cloudflare Tunnel rieng, cai duoc nhu app dien thoai (PWA)"
 url: "https://github.com/tnthanhlan/ct34app"
@@ -13,7 +13,7 @@ startup: application
 boot: auto
 init: false
 hassio_api: false
-homeassistant_api: false
+homeassistant_api: true
 map:
   - share:rw
   - media:rw
@@ -33,6 +33,7 @@ options:
   onedrive_remote_path: ""
   onedrive_drive_id: ""
   onedrive_drive_type: "personal"
+  ha_notify_service: "mobile_app_pixel_7_pro"
 schema:
   jwt_secret: password
   admin_password: password
@@ -45,3 +46,4 @@ schema:
   onedrive_remote_path: str
   onedrive_drive_id: str
   onedrive_drive_type: str
+  ha_notify_service: str

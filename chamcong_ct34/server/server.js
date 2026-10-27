@@ -18,6 +18,7 @@ const fs = require('fs');
     if (opts.onedrive_remote_path) process.env.ONEDRIVE_REMOTE_PATH = opts.onedrive_remote_path;
     if (opts.onedrive_drive_id) process.env.ONEDRIVE_DRIVE_ID = opts.onedrive_drive_id;
     if (opts.onedrive_drive_type) process.env.ONEDRIVE_DRIVE_TYPE = opts.onedrive_drive_type;
+    if (opts.ha_notify_service) process.env.HA_NOTIFY_SERVICE = opts.ha_notify_service;
   }catch(e){
     console.error('Không đọc được /data/options.json:', e.message);
   }
@@ -27,6 +28,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const cron = require('node-cron');
 const ExcelJS = require('exceljs');
+const http = require('http');
 
 const { getDb, persist, listSnapshots, readSnapshot, defaultState, migrateEmployeeFields } = require('./db');
 const {
@@ -159,6 +161,7 @@ function ensureMonthsField(state) {
   if (!state.monthlyAllowances) state.monthlyAllowances = {};
   if (!state.mealOverrides) state.mealOverrides = {};
   if (!state.phepOverrides) state.phepOverrides = {};
+  if (!state.shiftReminders) state.shiftReminders = {};
   return state;
 }
 
@@ -744,6 +747,161 @@ app.delete('/api/state/registrations/swap', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------------- Nhac ca tren Home Assistant khi co nguoi nghi F (bu ca) ----------------
+   Khi 1 nguoi dang ky F dung ngay ho phai lam ca (K1/K2/KD) VA da co nguoi bu ca (swaps - tu dong gan
+   cho Tran Nam Thanh hoac admin da doi tay sang nguoi khac), tu dong gui thong bao qua dich vu notify
+   cua Home Assistant TOI DUNG Tran Nam Thanh (nguoi quan ly) vao 2 moc:
+     - 20:00 toi HOM TRUOC ngay dien ra ca do
+     - truoc 1 TIENG gio bat dau ca do (K1 6h, K2 14h, KD 22h)
+   Noi dung thong bao luon doc LIVE tu reg.swaps ngay tai thoi diem gui (khong cache tu luc dang ky F),
+   nen neu admin da doi nguoi bu ca khac Thanh truoc khi den gio nhac, thong bao se phan anh dung nguoi
+   dang thuc su bu ca - dung yeu cau "bao theo thuc te doi ca". Can bat quyen "Home Assistant API"
+   (option homeassistant_api: true trong config.yaml) de co SUPERVISOR_TOKEN goi duoc notify service,
+   va dien ten dich vu notify (vd "mobile_app_xxx") vao option ha_notify_service trong Configuration. */
+const SHIFT_START_HOUR = { K1: 6, K2: 14, KD: 22 };
+const SHIFT_LABEL = { K1: 'Ca sáng (K1)', K2: 'Ca chiều (K2)', KD: 'Ca đêm (KD)' };
+const HA_NOTIFY_SERVICE = process.env.HA_NOTIFY_SERVICE || '';
+
+function findCoverPartner(state, dateStr, absenteeId) {
+  const reg = state.registrations[dateStr];
+  if (!reg || !reg.swaps) return null;
+  const pair = reg.swaps.find(p => p[0] === absenteeId || p[1] === absenteeId);
+  if (!pair) return null;
+  return pair[0] === absenteeId ? pair[1] : pair[0];
+}
+
+// Goi dich vu notify cua Home Assistant qua Supervisor API (http://supervisor/core/api/...).
+// Dung module http co san cua Node, khong them dependency moi.
+function sendHaNotify(title, message) {
+  return new Promise((resolve) => {
+    if (!HA_NOTIFY_SERVICE) {
+      console.warn('[nhắc-ca] Chưa điền "Dịch vụ thông báo HA" (ha_notify_service) trong Configuration của add-on — bỏ qua gửi.');
+      return resolve(false);
+    }
+    const token = process.env.SUPERVISOR_TOKEN;
+    if (!token) {
+      console.warn('[nhắc-ca] Thiếu SUPERVISOR_TOKEN — cần bật quyền "Home Assistant API" cho add-on này (Configuration/Info) để gửi được thông báo.');
+      return resolve(false);
+    }
+    const payload = JSON.stringify({ title, message });
+    // HA_SUPERVISOR_ADDR_OVERRIDE la bien noi bo CHI de phuc vu test cuc bo (gia lap Supervisor bang
+    // 1 HTTP server tren localhost) - khong phai option cua add-on, khong xuat hien trong config.yaml.
+    // San xuat luon goi dung 'supervisor' (host noi bo cua Supervisor trong mang Docker cua HA).
+    const [ovHost, ovPort] = (process.env.HA_SUPERVISOR_ADDR_OVERRIDE || '').split(':');
+    const req = http.request({
+      hostname: ovHost || 'supervisor',
+      port: ovPort || undefined,
+      path: `/core/api/services/notify/${encodeURIComponent(HA_NOTIFY_SERVICE)}`,
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      },
+      timeout: 10000
+    }, (res) => {
+      let body = '';
+      res.on('data', chunk => { body += chunk; });
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) resolve(true);
+        else {
+          console.error(`[nhắc-ca] Gửi thông báo thất bại, HTTP ${res.statusCode}: ${body.slice(0, 300)}`);
+          resolve(false);
+        }
+      });
+    });
+    req.on('error', (e) => { console.error('[nhắc-ca] Lỗi khi gọi notify service:', e.message); resolve(false); });
+    req.on('timeout', () => { req.destroy(); console.error('[nhắc-ca] Gọi notify service bị timeout.'); resolve(false); });
+    req.write(payload);
+    req.end();
+  });
+}
+
+function addDaysStr(dateStr, delta) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + delta);
+  return fmtDate(dt.getFullYear(), dt.getMonth(), dt.getDate());
+}
+
+// key duy nhat cho 1 lan nhac: ngay + nguoi vang + loai nhac
+// - "evening": quet luc 19h, bao truoc cho NGAY MAI (ap dung moi ca K1/K2/KD)
+// - "morning": quet luc 7h sang, bao trong NGAY HOM DO - CHI ap dung cho ca chieu/dem (K2/KD), vi luc
+//   7h gio vao ca sang (K1, 6h) da troi qua roi nen khong con y nghia "nhac truoc" nua (tin 19h hom
+//   truoc da la thong bao duy nhat cho ca K1).
+function reminderKey(dateStr, absenteeId, kind) { return `${dateStr}_${absenteeId}_${kind}`; }
+
+async function checkShiftReminders() {
+  try {
+    const db = getDb();
+    ensureMonthsField(db.state);
+    const sentMap = db.state.shiftReminders;
+    const now = new Date();
+    const nowHour = now.getHours();
+    // Quet luc 19h (hoac bat ky luc nao tu 12h trua tro di, vd server vua khoi dong lai buoi chieu):
+    // xem TRUOC cho ngay mai. Quet luc 7h sang (hoac bat ky luc nao truoc 12h trua): xem TRONG ngay hom
+    // nay. Cach chia theo "truoc/sau 12h trua" nay giup lan chay luc server vua khoi dong lai cung tu
+    // bat dung dung ngay can xem, kho co the bo sot ca ngay neu lo mat 1 lan quet dinh ky.
+    const todayStr = fmtDate(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrowStr = addDaysStr(todayStr, 1);
+    const checkDates = nowHour < 12
+      ? [{ dateStr: todayStr, kind: 'morning' }]
+      : [{ dateStr: tomorrowStr, kind: 'evening' }];
+    let changed = false;
+    for (const { dateStr, kind } of checkDates) {
+      if (dateStr < AUTO_COVERAGE_START_DATE) continue;
+      const reg = db.state.registrations[dateStr];
+      if (!reg || !reg.phep || !reg.phep.length) continue;
+      const parts = dateStr.split('-').map(Number);
+      const y = parts[0], m = parts[1] - 1, d = parts[2];
+      const common = getOrCreateMonthCommon(db.state, y, m);
+      const dateLabel = `${String(d).padStart(2, '0')}/${String(m + 1).padStart(2, '0')}/${y}`;
+      for (const absenteeId of reg.phep) {
+        const absentee = common.employees.find(e => e.id === absenteeId);
+        if (!absentee) continue;
+        const shiftCode = computeAutoCode(common, absentee, y, m, d);
+        if (!SHIFT_START_HOUR[shiftCode]) continue; // khong phai ca K1/K2/KD (vd ngay nghi trong chu ky xoay ca) - khong co gi de nhac
+        if (kind === 'morning' && shiftCode === 'K1') continue; // ca sang - da troi qua gio vao ca luc 7h, bo qua (tin 19h hom truoc la du)
+        const coverId = findCoverPartner(db.state, dateStr, absenteeId);
+        const coverEmp = coverId ? common.employees.find(e => e.id === coverId) : null;
+        const shiftLabel = SHIFT_LABEL[shiftCode] || shiftCode;
+        const key = reminderKey(dateStr, absenteeId, kind);
+        const prevSent = sentMap[key];
+        if (prevSent && prevSent.coverId === (coverId || null)) continue; // da gui dung voi dung nguoi bu ca nay - khong gui lai
+        const title = coverEmp
+          ? (kind === 'evening' ? `Nhắc ca ngày mai - ${dateLabel}` : `Nhắc ca hôm nay - ${dateLabel}`)
+          : `⚠️ Thiếu người bù ca ${dateLabel}`;
+        let message;
+        if (!coverEmp) {
+          message = `${absentee.name} nghỉ F ${shiftLabel} ngày ${dateLabel} nhưng CHƯA có người bù ca. Vào tab Chấm công để sắp xếp người thay.`;
+        } else if (coverEmp.name === AUTO_COVERAGE_ADMIN_NAME) {
+          message = `${absentee.name} nghỉ F ${shiftLabel} ngày ${dateLabel}. Anh (Trần Nam Thành) tự động bù ca này.`;
+        } else {
+          message = `${absentee.name} nghỉ F ${shiftLabel} ngày ${dateLabel}. ${coverEmp.name} bù ca thay (đã đổi ca, không phải Thành).`;
+        }
+        const ok = await sendHaNotify(title, message);
+        if (ok) {
+          sentMap[key] = { coverId: coverId || null, sentAt: new Date().toISOString() };
+          changed = true;
+        }
+      }
+    }
+    // Don dep cac key qua cu (hon 14 ngay) de state khong phinh to theo thoi gian.
+    const cutoffStr = addDaysStr(todayStr, -14);
+    Object.keys(sentMap).forEach(k => {
+      const dp = k.split('_')[0];
+      if (dp < cutoffStr) { delete sentMap[k]; changed = true; }
+    });
+    if (changed) { persist(); setImmediate(backupStateToShare); }
+  } catch (e) {
+    console.error('[nhắc-ca] Lỗi khi kiểm tra nhắc ca:', e.message);
+  }
+}
+// Quet dung 2 lan/ngay: 7h sang (nhac trong ngay, ca K2/KD) va 19h toi (nhac truoc cho ngay mai, moi ca).
+// Lan chay dau tien (ngay luc khoi dong) dat o CUOI file, SAU autoHealIfFreshData() - de khong bi "hut hang"
+// chay tren du lieu rong truoc khi auto-heal kip khoi phuc du lieu that.
+cron.schedule('0 7,19 * * *', checkShiftReminders);
+
 /* ---------------- Xuat Excel theo yeu cau ---------------- */
 app.get('/api/export/excel', requireAuth, async (req, res) => {
   const y = Number(req.query.year), m = Number(req.query.month) - 1;
@@ -979,6 +1137,10 @@ autoHealIfFreshData();
 // Luu 1 lan luc khoi dong, roi cu moi 30 phut luu lai
 backupStateToShare();
 setInterval(backupStateToShare, 30 * 60 * 1000);
+
+// Kiem tra nhac-ca ngay 1 lan luc khoi dong (sau khi auto-heal da chay xong, du lieu da la ban that) -
+// phong khi server vua restart dung luc gan 1 moc gio can nhac, khong phai doi den 5 phut cron tiep theo.
+checkShiftReminders();
 
 app.get('/api/admin/share-backups', requireAuth, requireAdmin, (req, res) => {
   try {

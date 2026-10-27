@@ -113,6 +113,9 @@ function defaultState() {
     monthlyAllowances: {},
     mealOverrides: {},
     phepOverrides: {},
+    // Luu lai cac lan da gui thong bao "nhac ca" qua Home Assistant (xem checkShiftReminders trong
+    // server.js), de khong gui trung lap - key dang "YYYY-MM-DD_<empId>_<evening|1h>".
+    shiftReminders: {},
     // Tu ban co "Common theo tung thang": moi thang co 1 ban rieng cua employees/kips/bacTable/settings,
     // key dang "YYYY-MM". Cac truong employees/kips/bacTable/settings o goc object nay CHI con dung lam
     // "hat giong" mac dinh cho lan dau tien 1 thang bat ky duoc tao (xem getOrCreateMonthCommon trong server.js),
@@ -170,6 +173,7 @@ function load() {
   if (!cache.state.mealOverrides) { cache.state.mealOverrides = {}; migrated = true; }
   if (!cache.state.phepOverrides) { cache.state.phepOverrides = {}; migrated = true; }
   if (!cache.state.months) { cache.state.months = {}; migrated = true; }
+  if (!cache.state.shiftReminders) { cache.state.shiftReminders = {}; migrated = true; }
   if (migrateEmployeeFields(cache.state)) migrated = true;
   if (migrated) save(cache);
   return cache;
