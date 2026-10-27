@@ -803,8 +803,10 @@ function sendHaNotify(title, message) {
       let body = '';
       res.on('data', chunk => { body += chunk; });
       res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) resolve(true);
-        else {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          console.log(`[nhắc-ca] Đã gửi thông báo tới ${HA_NOTIFY_SERVICE}: "${title}"`);
+          resolve(true);
+        } else {
           console.error(`[nhắc-ca] Gửi thông báo thất bại, HTTP ${res.statusCode}: ${body.slice(0, 300)}`);
           resolve(false);
         }
@@ -847,6 +849,11 @@ async function checkShiftReminders() {
     const checkDates = nowHour < 12
       ? [{ dateStr: todayStr, kind: 'morning' }]
       : [{ dateStr: tomorrowStr, kind: 'evening' }];
+    // Luon in 1 dong log moi lan chay (du khong gui gi) - de xac nhan cron/khoi dong co thuc su goi
+    // ham nay hay khong, tranh truong hop "im lang" ma khong biet la do khong co gi de nhac hay do
+    // ham nay chua bao gio chay toi.
+    console.log(`[nhắc-ca] Quét lúc ${now.toISOString()} (giờ máy chủ: ${now.toString()}) — kiểm tra ${checkDates.map(c => `${c.dateStr} (${c.kind})`).join(', ')}`);
+    let sentCount = 0;
     let changed = false;
     for (const { dateStr, kind } of checkDates) {
       if (dateStr < AUTO_COVERAGE_START_DATE) continue;
@@ -883,6 +890,7 @@ async function checkShiftReminders() {
         if (ok) {
           sentMap[key] = { coverId: coverId || null, sentAt: new Date().toISOString() };
           changed = true;
+          sentCount++;
         }
       }
     }
@@ -893,6 +901,7 @@ async function checkShiftReminders() {
       if (dp < cutoffStr) { delete sentMap[k]; changed = true; }
     });
     if (changed) { persist(); setImmediate(backupStateToShare); }
+    console.log(`[nhắc-ca] Xong - đã gửi ${sentCount} thông báo.`);
   } catch (e) {
     console.error('[nhắc-ca] Lỗi khi kiểm tra nhắc ca:', e.message);
   }
@@ -901,6 +910,16 @@ async function checkShiftReminders() {
 // Lan chay dau tien (ngay luc khoi dong) dat o CUOI file, SAU autoHealIfFreshData() - de khong bi "hut hang"
 // chay tren du lieu rong truoc khi auto-heal kip khoi phuc du lieu that.
 cron.schedule('0 7,19 * * *', checkShiftReminders);
+
+// Gui ngay 1 thong bao test toi dung dich vu HA_NOTIFY_SERVICE da cau hinh - dung de kiem tra "duong day"
+// (SUPERVISOR_TOKEN, ten dich vu notify, dien thoai co nhan duoc khong) ma KHONG can doi den 7h/19h that.
+// Khong dung gi den du lieu nhac-ca thuc (khong ghi sentMap), chi la 1 phep thu doc lap.
+app.post('/api/admin/test-ha-notify', requireAuth, requireAdmin, async (req, res) => {
+  const ok = await sendHaNotify('Test thông báo CT34', `Đây là tin nhắn thử từ add-on Chấm công & lương - CT34, gửi lúc ${new Date().toLocaleString('vi-VN')}. Nếu anh nhận được tin này nghĩa là đường gửi thông báo hoạt động tốt.`);
+  if (ok) res.json({ ok: true, message: `Đã gửi thành công tới dịch vụ "${HA_NOTIFY_SERVICE || '(chưa cấu hình)'}". Kiểm tra điện thoại xem có nhận được không.` });
+  // Dung field "error" (khong phai "message") cho nhanh ca that bai, vi ham api() o client chi doc j.error khi res khong ok.
+  else res.status(500).json({ ok: false, error: 'Gửi thất bại - xem Log của add-on để biết lý do cụ thể (thiếu SUPERVISOR_TOKEN, chưa điền ha_notify_service, hoặc tên dịch vụ sai).' });
+});
 
 /* ---------------- Xuat Excel theo yeu cau ---------------- */
 app.get('/api/export/excel', requireAuth, async (req, res) => {

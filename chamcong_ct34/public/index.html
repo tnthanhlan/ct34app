@@ -116,6 +116,12 @@
     · Dữ liệu ở đây lưu trên server, dùng chung cho mọi thiết bị đăng nhập — chỉ Admin mới sửa được.
   </div>
 
+  <h3 class="sec">Nhắc ca qua Home Assistant</h3>
+  <div class="note" style="margin-bottom:10px">
+    Khi có người nghỉ F đúng ngày vào ca (K1/K2/KD), hệ thống tự gửi thông báo tới điện thoại (qua Home Assistant) lúc 19h tối hôm trước (mọi ca) và 7h sáng hôm đó (riêng ca chiều/đêm). Bấm nút dưới đây để gửi thử ngay 1 tin test, không cần đợi đến giờ thật — nếu không nhận được tin test thì xem Log của add-on (tìm dòng "nhắc-ca") để biết lý do.
+  </div>
+  <button class="btn" id="btnTestHaNotify" style="margin-bottom:16px">🔔 Gửi thử thông báo</button>
+
   <h3 class="sec">Snapshot tự động (server tự lưu định kỳ, không cần bấm gì)</h3>
   <div class="note" style="margin-bottom:10px">
     Cứ tối đa mỗi 10 phút có thay đổi gì, server tự lưu lại 1 bản chụp toàn bộ dữ liệu, giữ tối đa 50 bản gần nhất. Nếu phát hiện dữ liệu bị thiếu, tìm bản snapshot đúng thời điểm còn đủ dữ liệu bên dưới rồi bấm "Khôi phục".

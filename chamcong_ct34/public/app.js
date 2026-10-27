@@ -510,6 +510,19 @@ async function renderSnapshots(){
     body.innerHTML = '<tr><td colspan="2">Không tải được danh sách: '+e.message+'</td></tr>';
   }
 }
+document.getElementById('btnTestHaNotify').addEventListener('click', async ()=>{
+  const btn = document.getElementById('btnTestHaNotify');
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Đang gửi...';
+  try{
+    const r = await api('POST', '/api/admin/test-ha-notify', {});
+    alert(r.message || (r.ok ? 'Đã gửi thành công.' : 'Gửi thất bại.'));
+  }catch(e){
+    alert('Lỗi khi gửi: '+e.message);
+  }finally{
+    btn.disabled = false; btn.textContent = old;
+  }
+});
 document.getElementById('btnRefreshSnapshots').addEventListener('click', renderSnapshots);
 
 document.getElementById('btnRestoreUpload').addEventListener('click', ()=>{
