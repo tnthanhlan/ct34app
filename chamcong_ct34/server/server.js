@@ -762,6 +762,15 @@ const SHIFT_START_HOUR = { K1: 6, K2: 14, KD: 22 };
 const SHIFT_LABEL = { K1: 'Ca sáng (K1)', K2: 'Ca chiều (K2)', KD: 'Ca đêm (KD)' };
 const HA_NOTIFY_SERVICE = process.env.HA_NOTIFY_SERVICE || '';
 
+// Chan doan 1 lan luc khoi dong: Supervisor cu dung ten SUPERVISOR_TOKEN, ban cu hon dung HASSIO_TOKEN
+// (van con giu de tuong thich nguoc o nhieu ban HA). Chi in TEN bien co ton tai hay khong (true/false),
+// KHONG BAO GIO in gia tri token ra log, de con biet dich token nam o dau neu SUPERVISOR_TOKEN rong.
+(function logTokenDiag() {
+  const hasSupervisor = !!process.env.SUPERVISOR_TOKEN;
+  const hasHassio = !!process.env.HASSIO_TOKEN;
+  console.log(`[nhắc-ca] Chẩn đoán token lúc khởi động: SUPERVISOR_TOKEN=${hasSupervisor ? 'có' : 'KHÔNG CÓ'}, HASSIO_TOKEN (tên cũ)=${hasHassio ? 'có' : 'không có'}, homeassistant_api cần = true trong config.yaml.`);
+})();
+
 function findCoverPartner(state, dateStr, absenteeId) {
   const reg = state.registrations[dateStr];
   if (!reg || !reg.swaps) return null;
@@ -778,9 +787,10 @@ function sendHaNotify(title, message) {
       console.warn('[nhắc-ca] Chưa điền "Dịch vụ thông báo HA" (ha_notify_service) trong Configuration của add-on — bỏ qua gửi.');
       return resolve(false);
     }
-    const token = process.env.SUPERVISOR_TOKEN;
+    // Du phong: ban Supervisor cu dung ten HASSIO_TOKEN, ban moi dung SUPERVISOR_TOKEN - chap nhan ca 2.
+    const token = process.env.SUPERVISOR_TOKEN || process.env.HASSIO_TOKEN;
     if (!token) {
-      console.warn('[nhắc-ca] Thiếu SUPERVISOR_TOKEN — cần bật quyền "Home Assistant API" cho add-on này (Configuration/Info) để gửi được thông báo.');
+      console.warn('[nhắc-ca] Thiếu SUPERVISOR_TOKEN (và HASSIO_TOKEN) — cần bật quyền "Home Assistant API" cho add-on này (Configuration/Info) để gửi được thông báo. Nếu config.yaml đã có homeassistant_api: true mà vẫn thiếu, có thể do add-on được cài TỪ TRƯỚC khi quyền này được thêm vào - thử Stop hẳn rồi Start lại (không phải Restart); nếu vẫn không được thì cần Uninstall rồi cài lại add-on để Supervisor cấp quyền từ đầu.');
       return resolve(false);
     }
     const payload = JSON.stringify({ title, message });
