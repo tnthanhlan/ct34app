@@ -762,13 +762,55 @@ const SHIFT_START_HOUR = { K1: 6, K2: 14, KD: 22 };
 const SHIFT_LABEL = { K1: 'Ca sáng (K1)', K2: 'Ca chiều (K2)', KD: 'Ca đêm (KD)' };
 const HA_NOTIFY_SERVICE = process.env.HA_NOTIFY_SERVICE || '';
 
-// Chan doan 1 lan luc khoi dong: Supervisor cu dung ten SUPERVISOR_TOKEN, ban cu hon dung HASSIO_TOKEN
-// (van con giu de tuong thich nguoc o nhieu ban HA). Chi in TEN bien co ton tai hay khong (true/false),
-// KHONG BAO GIO in gia tri token ra log, de con biet dich token nam o dau neu SUPERVISOR_TOKEN rong.
+// Supervisor luon cap SUPERVISOR_TOKEN cho container o muc Docker (dung voi homeassistant_api: true),
+// nhung anh base image cua HA dung s6-overlay v3: s6 nhan toan bo bien moi truong Docker roc vao, ghi
+// lai thanh tung file trong /run/s6/container_environment/<TEN_BIEN>, RIENG process.env cua tien trinh
+// con (vd node server.js) chi duoc "nap lai" cac bien nay NEU script khoi dong no dung qua with-contenv.
+// Neu entrypoint/run script cua add-on KHONG dung with-contenv truoc khi chay node, thi process.env se
+// KHONG co SUPERVISOR_TOKEN du Supervisor da cap dung quyen - day la nguyen nhan hay gap nhat, khong lien
+// quan gi den quyen "Home Assistant API" trong config.yaml. De khong phu thuoc vao cach entrypoint viet,
+// doc du phong truc tiep tu file cua s6 neu process.env khong co.
+function readS6ContainerEnv(name) {
+  const candidates = [
+    `/run/s6/container_environment/${name}`,
+    `/var/run/s6/container_environment/${name}`
+  ];
+  for (const p of candidates) {
+    try {
+      const v = fs.readFileSync(p, 'utf8').replace(/\n$/, '');
+      if (v) return v;
+    } catch (e) { /* khong co file o duong dan nay, thu duong tiep theo */ }
+  }
+  return '';
+}
+function getSupervisorToken() {
+  return process.env.SUPERVISOR_TOKEN || process.env.HASSIO_TOKEN
+    || readS6ContainerEnv('SUPERVISOR_TOKEN') || readS6ContainerEnv('HASSIO_TOKEN') || '';
+}
+
+// Chan doan 1 lan luc khoi dong - chi in CO/KHONG va LAY TU DAU, KHONG BAO GIO in gia tri token ra log.
+// Neu van KHONG tim duoc token o dau ca, in LUON toan bo danh sach TEN bien (khong phai gia tri) de
+// biet chac Supervisor co thuc su cap bien nay cho container o cap Docker hay khong - tranh phai doan
+// mo lai tu dau o vong sau: neu SUPERVISOR_TOKEN khong xuat hien trong CA 2 danh sach ben duoi (process.env
+// VA thu muc container_environment cua s6) thi chac chan la Supervisor chua cap, khong phai loi code hay
+// loi entrypoint/with-contenv nua.
 (function logTokenDiag() {
-  const hasSupervisor = !!process.env.SUPERVISOR_TOKEN;
-  const hasHassio = !!process.env.HASSIO_TOKEN;
-  console.log(`[nhắc-ca] Chẩn đoán token lúc khởi động: SUPERVISOR_TOKEN=${hasSupervisor ? 'có' : 'KHÔNG CÓ'}, HASSIO_TOKEN (tên cũ)=${hasHassio ? 'có' : 'không có'}, homeassistant_api cần = true trong config.yaml.`);
+  const fromEnv = !!(process.env.SUPERVISOR_TOKEN || process.env.HASSIO_TOKEN);
+  const fromS6File = !fromEnv && !!(readS6ContainerEnv('SUPERVISOR_TOKEN') || readS6ContainerEnv('HASSIO_TOKEN'));
+  const final = getSupervisorToken();
+  console.log(`[nhắc-ca] Chẩn đoán token lúc khởi động: process.env=${fromEnv ? 'có' : 'không'}, file container_environment của s6=${fromS6File ? 'có' : 'không'} => kết quả cuối cùng: ${final ? 'CÓ token, dùng được' : 'KHÔNG CÓ token ở bất kỳ đâu'}.`);
+  if (!final) {
+    const envKeys = Object.keys(process.env).sort();
+    console.log(`[nhắc-ca] Chẩn đoán sâu - toàn bộ TÊN biến môi trường (process.env) hiện có (${envKeys.length} biến): ${envKeys.join(', ')}`);
+    for (const dir of ['/run/s6/container_environment', '/var/run/s6/container_environment']) {
+      try {
+        const names = fs.readdirSync(dir).sort();
+        console.log(`[nhắc-ca] Chẩn đoán sâu - thư mục ${dir} có ${names.length} file: ${names.join(', ')}`);
+      } catch (e) {
+        console.log(`[nhắc-ca] Chẩn đoán sâu - không đọc được thư mục ${dir}: ${e.code || e.message}`);
+      }
+    }
+  }
 })();
 
 function findCoverPartner(state, dateStr, absenteeId) {
@@ -787,10 +829,9 @@ function sendHaNotify(title, message) {
       console.warn('[nhắc-ca] Chưa điền "Dịch vụ thông báo HA" (ha_notify_service) trong Configuration của add-on — bỏ qua gửi.');
       return resolve(false);
     }
-    // Du phong: ban Supervisor cu dung ten HASSIO_TOKEN, ban moi dung SUPERVISOR_TOKEN - chap nhan ca 2.
-    const token = process.env.SUPERVISOR_TOKEN || process.env.HASSIO_TOKEN;
+    const token = getSupervisorToken();
     if (!token) {
-      console.warn('[nhắc-ca] Thiếu SUPERVISOR_TOKEN (và HASSIO_TOKEN) — cần bật quyền "Home Assistant API" cho add-on này (Configuration/Info) để gửi được thông báo. Nếu config.yaml đã có homeassistant_api: true mà vẫn thiếu, có thể do add-on được cài TỪ TRƯỚC khi quyền này được thêm vào - thử Stop hẳn rồi Start lại (không phải Restart); nếu vẫn không được thì cần Uninstall rồi cài lại add-on để Supervisor cấp quyền từ đầu.');
+      console.warn('[nhắc-ca] Thiếu SUPERVISOR_TOKEN (đã thử cả process.env và file container_environment của s6) — cần bật quyền "Home Assistant API" cho add-on này (homeassistant_api: true) để Supervisor cấp token.');
       return resolve(false);
     }
     const payload = JSON.stringify({ title, message });
