@@ -1123,15 +1123,20 @@ cron.schedule('0 0 * * *', () => {
    KHONG dung 1 file ghi de theo ten thu trong tuan nua (loi cu: neu su co xay ra giua ngay,
    ghi de lien tuc 30 phut/lan se xoa mat ca ban tot dau ngay hom do).
    Thay vao do luu NHIEU BAN theo dung moc thoi gian, khong bao gio ghi de len nhau:
-   - history/: moi 30 phut 1 ban, giu 200 ban gan nhat (~4 ngay lien tuc)
-   - daily/:   moi ngay giu lai 1 ban (ban dau tien trong ngay), giu 60 ngay gan nhat
-*/
+   - history/: moi 30 phut 1 ban, giu 100 ban gan nhat (~2 ngay lien tuc) - lop "vua xay ra" de
+     auto-heal luon co ban rat moi khi container vua khoi dong lai.
+   - daily/:   moi ngay giu lai 1 ban (ban dau tien trong ngay), giu 7 ngay gan nhat - du de "undo"
+     1 sai sot vai hom truoc ma khong bi qua nhieu file cu khong ai dong tham toi.
+   - monthly/: GHI DE lien tuc trong thang (moi 30 phut 1 lan, giong history) vao DUNG 1 file theo
+     thang hien tai (vd ct34_2026-10.json) - nen den khi sang thang moi, file cua thang truoc tu
+     nhien "dong bang" lai o dung ban cuoi cung, luu MAI MAI (khong xoa) lam luu tru dai han theo
+     thang - dung y nhu anh Thanh yeu cau: het thang chi con dung 1 ban cuoi cung cua thang do. */
 const BACKUP_DESTS = [
   { key: 'share', baseDir: () => EXPORT_DIR },
   { key: 'nasdata', baseDir: () => NASDATA_DIR }
 ];
-const SHARE_HISTORY_KEEP = 200;
-const SHARE_DAILY_KEEP = 60;
+const SHARE_HISTORY_KEEP = 100;
+const SHARE_DAILY_KEEP = 7;
 let lastDailyBackupDate = null;
 
 function pruneDir(dir, keepCount) {
@@ -1147,6 +1152,7 @@ function backupStateToShare() {
   const now = new Date();
   const stamp = now.toISOString().replace(/[:.]/g, '-');
   const todayKey = now.toISOString().slice(0, 10); // YYYY-MM-DD
+  const monthKey = now.toISOString().slice(0, 7);  // YYYY-MM
   const json = JSON.stringify(db.state, null, 2);
   const isNewDay = lastDailyBackupDate !== todayKey;
 
@@ -1166,6 +1172,12 @@ function backupStateToShare() {
         fs.writeFileSync(path.join(dailyDir, `ct34_${todayKey}.json`), json, 'utf8');
         pruneDir(dailyDir, SHARE_DAILY_KEEP);
       }
+
+      // Ghi de lien tuc vao dung 1 file cua THANG HIEN TAI - khong gioi han so luong file thang
+      // (khong can pruneDir o day: moi thang chi sinh ra DUNG 1 file, vai chuc nam cung khong dang ke).
+      const monthlyDir = path.join(base, 'monthly');
+      if (!fs.existsSync(monthlyDir)) fs.mkdirSync(monthlyDir, { recursive: true });
+      fs.writeFileSync(path.join(monthlyDir, `ct34_${monthKey}.json`), json, 'utf8');
     } catch (e) {
       console.error(`Không sao lưu được ra [${key}]:`, e.message);
     }
@@ -1242,7 +1254,8 @@ app.get('/api/admin/share-backups', requireAuth, requireAdmin, (req, res) => {
     BACKUP_DESTS.forEach(({ key, baseDir }) => {
       result[key] = {
         history: listDir(path.join(baseDir(), 'history')),
-        daily: listDir(path.join(baseDir(), 'daily'))
+        daily: listDir(path.join(baseDir(), 'daily')),
+        monthly: listDir(path.join(baseDir(), 'monthly'))
       };
     });
     res.json(result);
@@ -1279,7 +1292,7 @@ app.post('/api/admin/share-backups/:dest/:folder/:filename/restore', requireAuth
   const { dest, folder, filename } = req.params;
   const destDef = BACKUP_DESTS.find(d => d.key === dest);
   if (!destDef) return res.status(400).json({ error: 'Nguồn không hợp lệ.' });
-  if (folder !== 'history' && folder !== 'daily') return res.status(400).json({ error: 'Thư mục không hợp lệ.' });
+  if (folder !== 'history' && folder !== 'daily' && folder !== 'monthly') return res.status(400).json({ error: 'Thư mục không hợp lệ.' });
   const dir = path.join(destDef.baseDir(), folder);
   const p = path.join(dir, path.basename(filename));
   if (!fs.existsSync(p)) return res.status(404).json({ error: 'Không tìm thấy file.' });

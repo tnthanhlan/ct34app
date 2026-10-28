@@ -571,7 +571,8 @@ async function renderShareBackups(){
     const data = await api('GET', '/api/admin/share-backups');
     const rows = [];
     Object.keys(data).forEach(dest=>{
-      (data[dest].daily||[]).forEach(f=>rows.push({dest, folder:'daily', label:'Theo ngày', filename:f}));
+      (data[dest].monthly||[]).forEach(f=>rows.push({dest, folder:'monthly', label:'Theo tháng (lưu dài hạn)', filename:f}));
+      (data[dest].daily||[]).forEach(f=>rows.push({dest, folder:'daily', label:'Theo ngày (7 ngày gần nhất)', filename:f}));
       (data[dest].history||[]).forEach(f=>rows.push({dest, folder:'history', label:'Theo thời điểm', filename:f}));
     });
     if(!rows.length){ body.innerHTML = '<tr><td colspan="4">Chưa có bản nào.</td></tr>'; return; }
