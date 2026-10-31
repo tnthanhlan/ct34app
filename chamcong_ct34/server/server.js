@@ -162,6 +162,10 @@ function ensureMonthsField(state) {
   if (!state.mealOverrides) state.mealOverrides = {};
   if (!state.phepOverrides) state.phepOverrides = {};
   if (!state.shiftReminders) state.shiftReminders = {};
+  // Chay o DAY (khong phai 1 lan rieng le luc khoi dong) de bat duoc CA truong hop phuc hoi lai 1 ban
+  // backup/snapshot CU (tu truoc khi co ban fix nay) - moi lan state bi THAY THE toan bo deu tu dong
+  // gop/don lai, khong bao gio de co che cu "song lai" ngoai y muon.
+  migrateMonthlyAllowancesIntoMonths(state);
   return state;
 }
 
@@ -192,6 +196,41 @@ function getOrCreateMonthCommon(state, y, m) {
   state.months[key] = created;
   persist(); setImmediate(backupStateToShare);
   return created;
+}
+
+// MOT LAN DUY NHAT (tu dong, moi lan ensureMonthsField chay - xem goi o duoi): gop co che "de ghi de
+// rieng theo thang" CU (state.monthlyAllowances - 1 map phang, tung ton tai SONG SONG voi Common-theo-
+// thang) VAO DUNG common.employees[].allow cua thang tuong ung, roi XOA SACH map cu di.
+// Ly do phai gop: 2 co che tung ton tai cung luc cho CUNG 1 thu (tick M3/+5%/-5%) - tab Common sua
+// thang truc tiep tren common.employees[].allow, con tab Tong hop nam lai ghi vao state.monthlyAllowances
+// rieng, va getEffectiveAllow (ban cu) LUON UU TIEN state.monthlyAllowances neu no co ton tai entry cho
+// nhan su+thang do - du entry do CHUA CHAC khop voi lan tick GAN NHAT ben tab Common. Hau qua: tick M3 o
+// tab Common co the bi "de de" vo hinh, khong bao gio hien ra Excel, neu truoc do tab Tong hop nam tung
+// dung toi (du chi 1 lan, vd tick +-5%) cho dung nhan su/thang do. Gop vao common.employees[].allow (gia
+// tri DANG CO HIEU LUC truoc khi gop, nen khong doi ket qua da tinh cho cac thang qua khu) la xong -
+// tu nay CHI CON 1 noi luu duy nhat, ca 2 tab doc/ghi chung, khong con the lech nhau nua.
+function migrateMonthlyAllowancesIntoMonths(state) {
+  const keys = Object.keys(state.monthlyAllowances || {});
+  if (!keys.length) return;
+  let count = 0, skipped = 0;
+  keys.forEach(key => {
+    const m = key.match(/^(.+)_(\d{4})-(\d{2})$/);
+    if (!m) { skipped++; return; }
+    const [, empId, yStr, mStr] = m;
+    const y = Number(yStr), mi = Number(mStr) - 1;
+    const common = getOrCreateMonthCommon(state, y, mi);
+    const emp = common.employees.find(e => e.id === empId);
+    if (!emp) { skipped++; return; }
+    const ov = state.monthlyAllowances[key];
+    if (!emp.allow) emp.allow = { m3: false, pct5: false, neg5: false, ksg: false };
+    emp.allow.m3 = !!ov.m3;
+    emp.allow.pct5 = !!ov.pct5;
+    emp.allow.neg5 = !!ov.neg5;
+    count++;
+  });
+  state.monthlyAllowances = {};
+  persist();
+  console.log(`[migration] Đã gộp ${count} bản ghi đè M3/+5%/-5% riêng theo tháng (bỏ qua ${skipped} bản không khớp được nhân sự/tháng) vào đúng Common của từng tháng, rồi dọn sạch cơ chế cũ.`);
 }
 
 function daysSinceAnchor(common, y, m, d) {
@@ -236,13 +275,11 @@ function computeFinalCode(state, common, emp, y, m, d) {
   }
   return computeAutoCode(common, emp, y, m, d);
 }
-function getEffectiveAllow(state, emp, y, m) {
-  if (y != null && m != null) {
-    const key = `${emp.id}_${y}-${String(m + 1).padStart(2, '0')}`;
-    const override = state.monthlyAllowances[key];
-    if (override) return { m3: !!override.m3, pct5: !!override.pct5, neg5: !!override.neg5, ksg: !!emp.allow.ksg };
-  }
-  return emp.allow;
+// "allow" (M3/+5%/-5%/KSG) gio CHI con 1 nguon duy nhat: emp.allow cua DUNG thang dang xem (vi emp o
+// day luon la 1 phan tu lay tu common.employees cua thang do - xem "Common theo tung thang" o tren).
+// KHONG con co che de ghi de rieng nao khac nua (da gop/don vao migrateMonthlyAllowancesIntoMonths).
+function getEffectiveAllow(emp) {
+  return (emp && emp.allow) || { m3: false, pct5: false, neg5: false, ksg: false };
 }
 
 function employeePayroll(state, common, emp, y, m) {
@@ -252,7 +289,7 @@ function employeePayroll(state, common, emp, y, m) {
   const phuCap = emp.phucap === 'catruong' ? common.settings.mucLuongToiThieu * common.settings.heSoTca
     : emp.phucap === 'totruong' ? common.settings.mucLuongToiThieu * common.settings.heSoTtruong : 0;
   const ks = isKS(emp.bac);
-  const allow = getEffectiveAllow(state, emp, y, m);
+  const allow = getEffectiveAllow(emp);
   const hesoCDHieuLuc = Number(emp.hesoCD || 0)
     + (allow.m3 ? (ks ? 0.25 : 0.16) : 0)
     + (allow.pct5 ? (ks ? 0.16 : 0.13) : 0)
@@ -442,13 +479,19 @@ async function buildMonthWorkbook(state, y, m) {
   xlsApplyFooter(ws, totalCols, y, m);
   ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 4 }];
   ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
+
+  // Them luon sheet "An ca" ngay ben canh trong CUNG 1 file - tai 1 lan la co ca 2, khong can tai rieng.
+  await addMealSheet(wb, state, y, m);
+
   return wb;
 }
 
-async function buildMealWorkbook(state, y, m) {
+// Them sheet "An ca" vao 1 workbook CO SAN (dung chung cho ca file rieng AnCa_*.xlsx va de
+// nhung vao ngay trong file ChamCong_*.xlsx chinh, theo yeu cau cua anh Thanh - tai file thang
+// la co luon 2 sheet, khong can tai rieng tung file nua).
+async function addMealSheet(wb, state, y, m) {
   const common = getOrCreateMonthCommon(state, y, m);
   const nDays = daysInMonth(y, m);
-  const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet(`AnCa ${m + 1}-${y}`);
   const totalCols = 6;
 
@@ -504,6 +547,13 @@ async function buildMealWorkbook(state, y, m) {
 
   xlsApplyFooter(ws, totalCols, y, m);
   ws.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
+  return ws;
+}
+
+// File rieng chi co 1 sheet An ca (dung cho nut tai rieng o tab An ca / auto-export hang thang).
+async function buildMealWorkbook(state, y, m) {
+  const wb = new ExcelJS.Workbook();
+  await addMealSheet(wb, state, y, m);
   return wb;
 }
 
@@ -635,12 +685,24 @@ app.post('/api/state/grid-clear-month', requireAuth, requireAdmin, (req, res) =>
    chot cu bo sot cac ngay nghi (ma rong) khong duoc dong bang, khien thang da "chot" van bi tinh lai
    sai theo cau hinh moi neu nhan su doi lich sau do (07-08/2026). */
 
+// Dung chung 1 cho duy nhat voi tab Common: ghi THANG truc tiep vao common.employees[].allow cua
+// DUNG thang duoc chi (giong het nhu khi sua tick o tab Common) - KHONG con map rieng monthlyAllowances
+// nua (da gop/don, xem migrateMonthlyAllowancesIntoMonths), nen tab Common va tab Tong hop nam gio
+// luon thay DUNG 1 su that nhu nhau, khong the lech nhau ngam duoc nua.
 app.put('/api/state/monthly-allowance', requireAuth, requireAdmin, (req, res) => {
   const { empId, yearMonth, m3, pct5, neg5 } = req.body || {};
   if (!empId || !yearMonth) return res.status(400).json({ error: 'Thiếu empId hoặc yearMonth.' });
+  const ymMatch = String(yearMonth).match(/^(\d{4})-(\d{2})$/);
+  if (!ymMatch) return res.status(400).json({ error: 'yearMonth sai định dạng (cần YYYY-MM).' });
+  const y = Number(ymMatch[1]), m = Number(ymMatch[2]) - 1;
   const db = getDb();
-  const key = `${empId}_${yearMonth}`;
-  db.state.monthlyAllowances[key] = { m3: !!m3, pct5: !!pct5, neg5: !!neg5 };
+  const common = getOrCreateMonthCommon(db.state, y, m);
+  const emp = common.employees.find(e => e.id === empId);
+  if (!emp) return res.status(404).json({ error: 'Không tìm thấy nhân sự này trong Common của tháng đó.' });
+  if (!emp.allow) emp.allow = { m3: false, pct5: false, neg5: false, ksg: false };
+  emp.allow.m3 = !!m3;
+  emp.allow.pct5 = !!pct5;
+  emp.allow.neg5 = !!neg5;
   persist(); setImmediate(backupStateToShare);
   res.json({ ok: true });
 });

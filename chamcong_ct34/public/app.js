@@ -97,13 +97,10 @@ function computeFinalCode(common, emp, y, m, d){
   }
   return computeAutoCode(common, emp, y, m, d);
 }
-function getEffectiveAllow(emp, y, m){
-  if(y!=null && m!=null){
-    const key = `${emp.id}_${y}-${String(m+1).padStart(2,'0')}`;
-    const override = state.monthlyAllowances[key];
-    if(override) return { m3: !!override.m3, pct5: !!override.pct5, neg5: !!override.neg5, ksg: !!emp.allow.ksg };
-  }
-  return emp.allow;
+// emp o day luon la nhan su cua DUNG thang dang xem (lay tu common.employees cua thang do), nen
+// emp.allow la nguon duy nhat - khong con map state.monthlyAllowances rieng nua (da gop/don ben server).
+function getEffectiveAllow(emp){
+  return (emp && emp.allow) || { m3:false, pct5:false, neg5:false, ksg:false };
 }
 function employeePayroll(common, emp, y, m){
   const bacEntry = common.bacTable.find(b=>b[0]===emp.bac);
@@ -1247,9 +1244,9 @@ function empFieldAcrossYear(monthCommons, empId, field){
 }
 
 async function saveMonthlyAllowance(empId, year, month, m3, pct5, neg5){
+  // Server gio ghi THANG vao common.employees[].allow cua dung thang nay (giong het tab Common) -
+  // khong con map state.monthlyAllowances o client nua, khoi can cap nhat lac/thua gi o day ca.
   const yearMonth = `${year}-${String(month+1).padStart(2,'0')}`;
-  const key = `${empId}_${yearMonth}`;
-  state.monthlyAllowances[key] = {m3, pct5, neg5};
   try{
     await api('PUT', '/api/state/monthly-allowance', {empId, yearMonth, m3, pct5, neg5});
   }catch(e){ alert('Không lưu được: '+e.message); }
@@ -1344,10 +1341,11 @@ async function renderTongHopNam(){
         }
       }
       const key = `${empId}_${year}-${String(m+1).padStart(2,'0')}`;
-      const override = state.monthlyAllowances[key];
-      const m3 = emp ? (override ? override.m3 : emp.allow.m3) : false;
-      const pct5 = emp ? (override ? override.pct5 : emp.allow.pct5) : false;
-      const neg5 = emp ? (override ? override.neg5 : emp.allow.neg5) : false;
+      // emp o day la nhan su cua DUNG thang nay (common cua thang m) - emp.allow la nguon duy nhat,
+      // giong het nhung gi tick o tab Common cua chinh thang do (khong con map rieng che khuat nua).
+      const m3 = emp ? emp.allow.m3 : false;
+      const pct5 = emp ? emp.allow.pct5 : false;
+      const neg5 = emp ? emp.allow.neg5 : false;
 
       const phepOv = state.phepOverrides[key];
       const fEff = (phepOv===null || phepOv===undefined) ? fCount : phepOv;
