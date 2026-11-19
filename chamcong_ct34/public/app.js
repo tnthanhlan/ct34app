@@ -21,9 +21,12 @@ const CODES = {
   TN:    {name:'Tai nạn lao động', color:'#D32F2F'},
   B:     {name:'Nghỉ bù (có lương)', color:'#8D6E63'},
   BL:    {name:'Nghỉ bù không lương', color:'#455A64'},
-  CT:    {name:'Công tác / quân sự / trực thường', color:'#9C27B0'}
+  CT:    {name:'Công tác / quân sự / trực thường / học tập, đào tạo', color:'#9C27B0'}
 };
 const CODE_ORDER = ['','X','K1','K2','KD','XĐ','XL','XLĐ','K1L','K2L','KDL','F','L','DL','Rc','Ro','Ô','TS','TN','B','BL','CT'];
+/* Cac loai duoc chon trong popup "Dang ky nghi" (tab Cham cong) - khong gom cac ma ca kip tu dong (X, K1...)
+   va ma L (nghi le/tet, tu dong theo lich chung, khong phai do tung ca nhan dang ky). */
+const LEAVE_TYPES = ['F','DL','Rc','Ro','Ô','TS','TN','B','BL','CT'];
 const WEEKDAY_LABELS = ['Chủ nhật','Thứ hai','Thứ ba','Thứ tư','Thứ năm','Thứ sáu','Thứ bảy'];
 const WORK_CODES = ['X','XĐ','XL','XLĐ','K1','K2','KD','K1L','K2L','KDL'];
 const CYCLE_TAM = ['X','X','','X','X','XĐ','XĐ',''];
@@ -252,6 +255,7 @@ function applyRolePermissions(){
 /* ================= Tabs ================= */
 document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
+    closeLeavePopup();
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     ['common','chamcong','dangky','tonghopnam','anca','ghichu'].forEach(t=>{
@@ -987,42 +991,122 @@ document.getElementById('btnGenKip').addEventListener('click', ()=>{
   setTimeout(()=>{ btn.textContent = old; }, 1400);
 });
 document.getElementById('modePhep').addEventListener('click', ()=>{
+  closeLeavePopup();
   regMode='phep'; pendingSwap=null;
   document.getElementById('modePhep').classList.add('active');
   document.getElementById('modeSwap').classList.remove('active');
 });
 document.getElementById('modeSwap').addEventListener('click', ()=>{
+  closeLeavePopup();
   regMode='swap'; pendingSwap=null;
   document.getElementById('modeSwap').classList.add('active');
   document.getElementById('modePhep').classList.remove('active');
 });
 
-async function onRegCellClick(dateStr, empId){
+function getCurrentLeaveCode(dateStr, empId){
+  if(isPhep(dateStr, empId)) return 'F';
+  const g = state.grid[empId] && state.grid[empId][dateStr];
+  if(g && LEAVE_TYPES.includes(g)) return g;
+  return '';
+}
+
+/* Ap dung lua chon loai nghi tu popup. chosen la '' (Bo chon), 'F', hoac 1 trong LEAVE_TYPES.
+   Click lai dung loai dang ap dung se tu dong bo chon (giong hanh vi toggle F truoc day). */
+async function applyLeaveChoice(dateStr, empId, chosen){
+  const current = getCurrentLeaveCode(dateStr, empId);
+  const target = (chosen === current) ? '' : chosen;
   try{
-    if(regMode==='phep'){
-      const r = await api('POST', '/api/state/registrations/phep', {dateStr, empId});
+    if(current === 'F' && target !== 'F'){
+      const r = await api('POST', '/api/state/registrations/phep', {dateStr, empId}); // dang F -> goi lai se tat
       state.registrations[dateStr] = r;
+    } else if(current && current !== 'F' && target !== current){
+      await setGridCode(empId, dateStr, ''); // xoa ma nghi cu tren grid
+    }
+    if(target === 'F' && current !== 'F'){
+      const r = await api('POST', '/api/state/registrations/phep', {dateStr, empId}); // dang tat -> goi se bat
+      state.registrations[dateStr] = r;
+    } else if(target && target !== 'F'){
+      await setGridCode(empId, dateStr, target);
+    }
+  }catch(e){
+    alert('Không lưu được đăng ký: '+e.message);
+  }
+  closeLeavePopup();
+  renderDangKy();
+  renderCalendar();
+}
+
+let leavePopupEl = null;
+function closeLeavePopup(){
+  if(leavePopupEl){ leavePopupEl.remove(); leavePopupEl = null; }
+  document.removeEventListener('mousedown', onDocMouseDownCloseLeavePopup, true);
+}
+function onDocMouseDownCloseLeavePopup(ev){
+  if(leavePopupEl && !leavePopupEl.contains(ev.target)) closeLeavePopup();
+}
+function openLeavePopup(anchorEl, dateStr, empId){
+  closeLeavePopup();
+  const current = getCurrentLeaveCode(dateStr, empId);
+  const pop = document.createElement('div');
+  pop.className = 'leave-popup';
+  const title = document.createElement('div');
+  title.className = 'leave-popup-title';
+  title.textContent = empNameById(empId) + ' — ngày ' + dateStr.split('-')[2];
+  pop.appendChild(title);
+  LEAVE_TYPES.forEach(code=>{
+    const meta = CODES[code];
+    const item = document.createElement('div');
+    item.className = 'leave-popup-item' + (current===code ? ' active' : '');
+    item.innerHTML = `<span class="leave-popup-swatch" style="background:${meta.color}"></span><span class="leave-popup-code">${code}</span><span>${meta.name}</span>`;
+    item.addEventListener('click', ()=>applyLeaveChoice(dateStr, empId, code));
+    pop.appendChild(item);
+  });
+  const clearItem = document.createElement('div');
+  clearItem.className = 'leave-popup-item leave-popup-clear';
+  clearItem.textContent = '✕ Bỏ chọn (xoá đăng ký nghỉ)';
+  clearItem.addEventListener('click', ()=>applyLeaveChoice(dateStr, empId, ''));
+  pop.appendChild(clearItem);
+
+  document.body.appendChild(pop);
+  const r = anchorEl.getBoundingClientRect();
+  const popW = pop.offsetWidth, popH = pop.offsetHeight;
+  let left = r.left;
+  let top = r.bottom + 4;
+  if(left + popW > window.innerWidth - 8) left = window.innerWidth - popW - 8;
+  if(top + popH > window.innerHeight - 8) top = r.top - popH - 4;
+  if(top < 4) top = 4;
+  pop.style.left = Math.max(4,left) + 'px';
+  pop.style.top = top + 'px';
+  leavePopupEl = pop;
+  document.addEventListener('mousedown', onDocMouseDownCloseLeavePopup, true);
+}
+
+async function onSwapCellClick(dateStr, empId){
+  try{
+    const partner = getSwapPartner(dateStr, empId);
+    if(partner){
+      await api('DELETE', '/api/state/registrations/swap', {dateStr, empId});
+      if(state.registrations[dateStr]) state.registrations[dateStr].swaps = state.registrations[dateStr].swaps.filter(p=>p[0]!==empId && p[1]!==empId);
+      pendingSwap = null;
+    } else if(pendingSwap && pendingSwap.dateStr===dateStr && pendingSwap.empId===empId){
+      pendingSwap = null;
+    } else if(pendingSwap && pendingSwap.dateStr===dateStr){
+      const r = await api('POST', '/api/state/registrations/swap', {dateStr, empIdA: pendingSwap.empId, empIdB: empId});
+      state.registrations[dateStr] = r;
+      pendingSwap = null;
     } else {
-      const partner = getSwapPartner(dateStr, empId);
-      if(partner){
-        await api('DELETE', '/api/state/registrations/swap', {dateStr, empId});
-        if(state.registrations[dateStr]) state.registrations[dateStr].swaps = state.registrations[dateStr].swaps.filter(p=>p[0]!==empId && p[1]!==empId);
-        pendingSwap = null;
-      } else if(pendingSwap && pendingSwap.dateStr===dateStr && pendingSwap.empId===empId){
-        pendingSwap = null;
-      } else if(pendingSwap && pendingSwap.dateStr===dateStr){
-        const r = await api('POST', '/api/state/registrations/swap', {dateStr, empIdA: pendingSwap.empId, empIdB: empId});
-        state.registrations[dateStr] = r;
-        pendingSwap = null;
-      } else {
-        pendingSwap = {dateStr, empId};
-      }
+      pendingSwap = {dateStr, empId};
     }
   }catch(e){
     alert('Không lưu được đăng ký: '+e.message);
   }
   renderDangKy();
   renderCalendar();
+}
+
+function onRegCellClick(anchorEl, dateStr, empId){
+  if(regMode==='phep') openLeavePopup(anchorEl, dateStr, empId);
+  else onSwapCellClick(dateStr, empId);
 }
 
 function buildDangKyRow(emp, nDays){
@@ -1035,18 +1119,23 @@ function buildDangKyRow(emp, nDays){
     const dateStr = fmtDate(viewYear, viewMonth, d);
     const dow = new Date(viewYear, viewMonth, d).getDay();
     const wknd = (dow===0||dow===6);
-    const phep = isPhep(dateStr, emp.id);
+    const leaveCode = getCurrentLeaveCode(dateStr, emp.id);
     const partner = getSwapPartner(dateStr, emp.id);
     const pairColor = partner ? getSwapPairColor(dateStr, emp.id) : null;
     const pending = pendingSwap && pendingSwap.dateStr===dateStr && pendingSwap.empId===emp.id;
     const td = document.createElement('td');
     if(wknd) td.classList.add('weekend');
     const div = document.createElement('div');
-    div.className = 'dk-cell' + (phep?' dk-phep':'') + (pending?' dk-pending':'');
-    if(pairColor) div.style.background = pairColor;
-    div.textContent = phep ? 'F' : (partner ? '⇄' : '');
+    div.className = 'dk-cell' + (leaveCode?' dk-leave':'') + (pending?' dk-pending':'');
+    if(leaveCode){
+      div.style.background = CODES[leaveCode] ? CODES[leaveCode].color : '#FFE08A';
+    } else if(pairColor){
+      div.style.background = pairColor;
+    }
+    div.textContent = leaveCode || (partner ? '⇄' : '');
+    if(leaveCode) div.title = CODES[leaveCode] ? (leaveCode+' — '+CODES[leaveCode].name) : leaveCode;
     if(partner) div.title = 'Đổi ca với: ' + empNameById(partner);
-    div.addEventListener('click', ()=>onRegCellClick(dateStr, emp.id));
+    div.addEventListener('click', (ev)=>onRegCellClick(ev.currentTarget, dateStr, emp.id));
     td.appendChild(div);
     tr.appendChild(td);
   }
@@ -1055,6 +1144,7 @@ function buildDangKyRow(emp, nDays){
 
 function renderDangKy(){
   if(!state || !common) return;
+  closeLeavePopup();
   const nDays = daysInMonth(viewYear, viewMonth);
   const table = document.getElementById('dkTable');
   table.innerHTML = '';
@@ -1107,6 +1197,17 @@ function renderRegSummary(nDays){
       }
     });
     (r.swaps||[]).forEach(pair=>lines.push(`Ngày ${d}: <b>${escapeHtml(empNameById(pair[0]))}</b> đổi ca với <b>${escapeHtml(empNameById(pair[1]))}</b>`));
+  }
+  // Cac loai nghi khac (ngoai F) duoc chon qua popup, luu tren state.grid - liet ke them cho du.
+  for(let d=1; d<=nDays; d++){
+    const dateStr = fmtDate(viewYear, viewMonth, d);
+    common.employees.forEach(emp=>{
+      const g = state.grid[emp.id] && state.grid[emp.id][dateStr];
+      if(g && g!=='F' && LEAVE_TYPES.includes(g)){
+        const meta = CODES[g];
+        lines.push(`Ngày ${d}: <b>${escapeHtml(emp.name)}</b> đăng ký <b>${g}</b> — ${escapeHtml(meta ? meta.name : '')}`);
+      }
+    });
   }
   const allLines = warnLines.concat(lines);
   box.innerHTML = allLines.length ? allLines.join('<br>') : 'Chưa có đăng ký nào trong tháng này.';
