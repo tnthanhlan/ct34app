@@ -140,6 +140,66 @@ const CYCLE_CA = ['K1', 'K1', '', 'K2', 'K2', 'KD', 'KD', ''];
 const CODE_ORDER = ['', 'X', 'K1', 'K2', 'KD', 'XĐ', 'XL', 'XLĐ', 'K1L', 'K2L', 'KDL', 'F', 'L', 'DL', 'Rc', 'Ro', 'Ô', 'TS', 'TN', 'B', 'BL', 'CT'];
 const WORK_CODES = ['X', 'XĐ', 'XL', 'XLĐ', 'K1', 'K2', 'KD', 'K1L', 'K2L', 'KDL'];
 
+// Cac ngay nghi Le/Tet CO DINH hang nam theo Dieu 112 Bo luat Lao dong (ap dung tu dong moi nam, KHONG
+// can nhap lai) - "fromYear" la nam dau tien quy dinh co hieu luc (bo trong = ap dung tu truoc den nay):
+//  - 24/11 (Ngay Van hoa Viet Nam): theo Nghi quyet 28/2026/QH16, hieu luc tu 1/7/2026 -> 2026 la nam dau.
+//  - 27/7 (Ngay Thuong binh, Liet si / Ngay To quoc tri an): bo sung vao Dieu 112 BLLD boi Luat sua doi
+//    thong qua 21/11/2026, nhung luat co HIEU LUC TU 1/3/2027 -> nam dau nguoi lao dong duoc nghi huong
+//    nguyen luong ngay nay la 2027 (27/7/2026 KHONG duoc tinh la ngay le).
+// Cac ngay BIEN DOI moi nam (5 ngay Tet Nguyen Dan, Gio To Hung Vuong 10/3 am, ngay lien ke Quoc khanh do
+// Chinh phu chon) KHONG the tinh cu dinh duoc - luu rieng trong state.holidays (xem ensureMonthsField),
+// Admin bo sung qua tab "Ghi chu" khi co thong bao chinh thuc cho nam moi (thuong truoc 30/9 hang nam).
+const FIXED_ANNUAL_HOLIDAYS = [
+  { month: 1, day: 1, label: 'Tết Dương lịch' },
+  { month: 4, day: 30, label: 'Ngày Giải phóng miền Nam, thống nhất đất nước' },
+  { month: 5, day: 1, label: 'Ngày Quốc tế Lao động' },
+  { month: 9, day: 2, label: 'Quốc khánh' },
+  { month: 11, day: 24, label: 'Ngày Văn hóa Việt Nam', fromYear: 2026 },
+  { month: 7, day: 27, label: 'Ngày Thương binh, Liệt sĩ (Ngày Tổ quốc tri ân)', fromYear: 2027 },
+];
+function fixedHolidayEntry(y, m, d) {
+  return FIXED_ANNUAL_HOLIDAYS.find(h => h.month === (m + 1) && h.day === d && y >= (h.fromYear || 0)) || null;
+}
+function isHoliday(state, y, m, d) {
+  const dateStr = fmtDate(y, m, d);
+  if (state.holidays && state.holidays[dateStr]) return true;
+  return !!fixedHolidayEntry(y, m, d);
+}
+function holidayLabel(state, y, m, d) {
+  const dateStr = fmtDate(y, m, d);
+  if (state.holidays && state.holidays[dateStr]) return state.holidays[dateStr];
+  const f = fixedHolidayEntry(y, m, d);
+  return f ? f.label : null;
+}
+// Quy doi ma lam viec binh thuong -> ma lam viec vao ngay Le/Tet (huong luong/phu cap cao hon) khi
+// ngay do trung vao danh sach ngay nghi Le; ngay lam viec vao Le ma chua co ma rieng thi giu nguyen.
+const HOLIDAY_WORK_MAP = { X: 'XL', 'XĐ': 'XLĐ', K1: 'K1L', K2: 'K2L', KD: 'KDL' };
+function applyHolidayIfNeeded(state, y, m, d, code) {
+  if (!isHoliday(state, y, m, d)) return code;
+  if (HOLIDAY_WORK_MAP[code]) return HOLIDAY_WORK_MAP[code];
+  if (code === '') return 'L';
+  return code;
+}
+// Cac ngay BIEN DOI da xac nhan (tra cuu thang 11/2026) cho rieng nam 2026 - chi seed 1 LAN DUY NHAT
+// (xem seedDefaultHolidaysOnce) de khong "song lai" neu Admin sau nay xoa bot ngay nao do di.
+const DEFAULT_HOLIDAYS_2026 = {
+  '2026-02-16': 'Tết Nguyên Đán (29 Tết)',
+  '2026-02-17': 'Tết Nguyên Đán (Mùng 1)',
+  '2026-02-18': 'Tết Nguyên Đán (Mùng 2)',
+  '2026-02-19': 'Tết Nguyên Đán (Mùng 3)',
+  '2026-02-20': 'Tết Nguyên Đán (Mùng 4)',
+  '2026-04-26': 'Giỗ Tổ Hùng Vương (10/3 âm lịch)',
+  '2026-09-01': 'Quốc khánh (ngày liền kề)',
+};
+function seedDefaultHolidaysOnce(state) {
+  if (!state.holidays) state.holidays = {};
+  if (state.holidaysSeeded2026) return;
+  Object.keys(DEFAULT_HOLIDAYS_2026).forEach(dateStr => {
+    if (!state.holidays[dateStr]) state.holidays[dateStr] = DEFAULT_HOLIDAYS_2026[dateStr];
+  });
+  state.holidaysSeeded2026 = true;
+}
+
 function mod8(n) { return ((n % 8) + 8) % 8; }
 function daysInMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
 function fmtDate(y, m, d) { return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0'); }
@@ -162,10 +222,12 @@ function ensureMonthsField(state) {
   if (!state.mealOverrides) state.mealOverrides = {};
   if (!state.phepOverrides) state.phepOverrides = {};
   if (!state.shiftReminders) state.shiftReminders = {};
+  if (!state.holidays) state.holidays = {};
   // Chay o DAY (khong phai 1 lan rieng le luc khoi dong) de bat duoc CA truong hop phuc hoi lai 1 ban
   // backup/snapshot CU (tu truoc khi co ban fix nay) - moi lan state bi THAY THE toan bo deu tu dong
   // gop/don lai, khong bao gio de co che cu "song lai" ngoai y muon.
   migrateMonthlyAllowancesIntoMonths(state);
+  seedDefaultHolidaysOnce(state);
   return state;
 }
 
@@ -268,12 +330,12 @@ function computeFinalCode(state, common, emp, y, m, d) {
         else if (pair[1] === emp.id) partnerId = pair[0];
         if (partnerId) {
           const partner = common.employees.find(e => e.id === partnerId);
-          if (partner) return computeAutoCode(common, partner, y, m, d);
+          if (partner) return applyHolidayIfNeeded(state, y, m, d, computeAutoCode(common, partner, y, m, d));
         }
       }
     }
   }
-  return computeAutoCode(common, emp, y, m, d);
+  return applyHolidayIfNeeded(state, y, m, d, computeAutoCode(common, emp, y, m, d));
 }
 // "allow" (M3/+5%/-5%/KSG) gio CHI con 1 nguon duy nhat: emp.allow cua DUNG thang dang xem (vi emp o
 // day luon la 1 phan tu lay tu common.employees cua thang do - xem "Common theo tung thang" o tren).
@@ -732,6 +794,21 @@ app.put('/api/state/meal-override', requireAuth, requireAdmin, (req, res) => {
   };
   persist(); setImmediate(backupStateToShare);
   res.json({ ok: true });
+});
+
+// Quan ly danh sach ngay nghi Le/Tet BIEN DOI theo nam (Tet Nguyen Dan, Gio To Hung Vuong, ngay lien ke
+// Quoc khanh...) - xem tab "Ghi chu". Cac ngay CO DINH hang nam (1/1, 30/4, 1/5, 2/9, 24/11, 27/7) KHONG
+// can quan ly o day, tu dong ap dung qua FIXED_ANNUAL_HOLIDAYS. Goi voi label='' (hoac khong gui label)
+// de XOA 1 ngay da co; goi voi label khac rong de THEM/SUA.
+app.put('/api/state/holidays', requireAuth, requireAdmin, (req, res) => {
+  const { dateStr, label } = req.body || {};
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return res.status(400).json({ error: 'dateStr sai định dạng (cần YYYY-MM-DD).' });
+  const db = getDb();
+  if (!db.state.holidays) db.state.holidays = {};
+  if (!label) delete db.state.holidays[dateStr];
+  else db.state.holidays[dateStr] = String(label);
+  persist(); setImmediate(backupStateToShare);
+  res.json({ ok: true, holidays: db.state.holidays });
 });
 
 /* ---------------- Tu dong bu ca khi co nguoi nghi F (dam bao nguyen tac 2 nguoi/1 ca) ----------------

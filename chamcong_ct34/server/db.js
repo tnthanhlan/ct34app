@@ -113,6 +113,12 @@ function defaultState() {
     monthlyAllowances: {},
     mealOverrides: {},
     phepOverrides: {},
+    // Ngay nghi Le/Tet CU THE theo tung nam (key "YYYY-MM-DD" -> nhan, vd Tet Nguyen Dan, Gio To Hung
+    // Vuong, ngay lien ke Quoc khanh - nhung ngay nay doi theo am lich/Chinh phu cong bo moi nam nen
+    // KHONG the "cu dinh" duoc, Admin can bo sung qua tab Ghi chu khi co thong bao chinh thuc cho nam
+    // moi). Cac ngay le CO DINH hang nam (1/1, 30/4, 1/5, 2/9, 24/11 tu 2026, 27/7 tu 2027) khong can
+    // nhap o day - da tu dong ap dung moi nam qua FIXED_ANNUAL_HOLIDAYS trong server.js/app.js.
+    holidays: {},
     // Luu lai cac lan da gui thong bao "nhac ca" qua Home Assistant (xem checkShiftReminders trong
     // server.js), de khong gui trung lap - key dang "YYYY-MM-DD_<empId>_<evening|1h>".
     shiftReminders: {},
@@ -174,6 +180,7 @@ function load() {
   if (!cache.state.phepOverrides) { cache.state.phepOverrides = {}; migrated = true; }
   if (!cache.state.months) { cache.state.months = {}; migrated = true; }
   if (!cache.state.shiftReminders) { cache.state.shiftReminders = {}; migrated = true; }
+  if (!cache.state.holidays) { cache.state.holidays = {}; migrated = true; }
   if (migrateEmployeeFields(cache.state)) migrated = true;
   if (migrated) save(cache);
   return cache;

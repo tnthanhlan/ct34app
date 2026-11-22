@@ -224,6 +224,22 @@
     <thead><tr><th>Mã</th><th>Ý nghĩa</th><th>Được tính vào cột tổng hợp nào</th></tr></thead>
     <tbody id="legendBody"></tbody>
   </table>
+
+  <h3 class="sec">Ngày nghỉ Lễ, Tết</h3>
+  <div class="note" style="margin-bottom:10px">
+    Vào đúng những ngày này, hệ thống <b>tự động</b> đổi mã công thường (X, K1, K2, KD, XĐ) sang mã làm việc ngày lễ tương ứng (XL, K1L, K2L, KDL, XLĐ) cho ai phải làm ca hôm đó, hoặc ghi "L" (nghỉ lễ) cho ai được nghỉ hôm đó theo lịch — không cần Admin chọn tay từng người từng ngày như trước. Ô nào đã sửa tay (ở Bảng Công) hoặc đã đăng ký nghỉ loại khác (ở tab Chấm công) thì luôn được giữ nguyên, không bị ghi đè.<br><br>
+    <b>Các ngày lễ cố định hằng năm</b> (tự áp dụng mãi về sau, không cần nhập): Tết Dương lịch 1/1, Ngày Giải phóng miền Nam 30/4, Ngày Quốc tế Lao động 1/5, Quốc khánh 2/9, Ngày Văn hoá Việt Nam 24/11 (từ năm 2026), Ngày Thương binh Liệt sĩ 27/7 (từ năm 2027 — luật đã được Quốc hội thông qua 21/11/2026 nhưng có hiệu lực từ 1/3/2027 nên 27/7/2026 chưa được tính là ngày lễ).<br>
+    <b>Các ngày lễ thay đổi theo từng năm</b> (Tết Nguyên Đán, Giỗ Tổ Hùng Vương 10/3 âm lịch, ngày liền kề Quốc khánh do Chính phủ chọn...) cần Admin tự thêm dưới đây mỗi năm khi có thông báo chính thức (thường trước 30/9 hằng năm) — đã có sẵn đủ ngày cho năm 2026.
+  </div>
+  <div class="toolbar">
+    <label>Ngày</label><input type="date" id="holNewDate">
+    <label>Ghi chú</label><input type="text" id="holNewLabel" placeholder="Vd: Tết Nguyên Đán (Mùng 1)" style="width:260px">
+    <button class="btn primary" id="btnAddHoliday">+ Thêm / Sửa</button>
+  </div>
+  <table id="holidayTable">
+    <thead><tr><th style="width:120px">Ngày</th><th>Ghi chú</th><th style="width:60px"></th></tr></thead>
+    <tbody id="holidayBody"></tbody>
+  </table>
 </div>
 
 <footer>Dữ liệu lưu trên máy chủ, dùng chung cho mọi thiết bị đăng nhập.</footer>

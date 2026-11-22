@@ -52,6 +52,46 @@ function isActiveInMonth(emp, y, m){
 const AUTO_COVERAGE_ADMIN_NAME = 'Trần Nam Thành';
 const AUTO_COVERAGE_START_DATE = '2026-10-01';
 
+/* Ngay nghi Le/Tet - xem giai thich day du (nguon, tai sao tach "co dinh" / "bien doi") trong
+   server/server.js, phan tuong duong. Phai KHOP CHINH XAC voi ban server (ca FIXED_ANNUAL_HOLIDAYS lan
+   HOLIDAY_WORK_MAP) vi day la tinh toan HIEN THI client - server van la noi tinh luong/xuat Excel chinh
+   thuc, nhung client phai hien dung thi nguoi dung moi thay dung ma truoc khi luu. */
+const FIXED_ANNUAL_HOLIDAYS = [
+  { month: 1, day: 1, label: 'Tết Dương lịch' },
+  { month: 4, day: 30, label: 'Ngày Giải phóng miền Nam, thống nhất đất nước' },
+  { month: 5, day: 1, label: 'Ngày Quốc tế Lao động' },
+  { month: 9, day: 2, label: 'Quốc khánh' },
+  { month: 11, day: 24, label: 'Ngày Văn hóa Việt Nam', fromYear: 2026 },
+  { month: 7, day: 27, label: 'Ngày Thương binh, Liệt sĩ (Ngày Tổ quốc tri ân)', fromYear: 2027 },
+];
+function fixedHolidayEntry(y, m, d){
+  return FIXED_ANNUAL_HOLIDAYS.find(h=>h.month===(m+1) && h.day===d && y>=(h.fromYear||0)) || null;
+}
+function isHoliday(y, m, d){
+  const dateStr = fmtDate(y, m, d);
+  if(state.holidays && state.holidays[dateStr]) return true;
+  return !!fixedHolidayEntry(y, m, d);
+}
+function holidayLabel(y, m, d){
+  const dateStr = fmtDate(y, m, d);
+  if(state.holidays && state.holidays[dateStr]) return state.holidays[dateStr];
+  const f = fixedHolidayEntry(y, m, d);
+  return f ? f.label : null;
+}
+const HOLIDAY_WORK_MAP = {X:'XL', 'XĐ':'XLĐ', K1:'K1L', K2:'K2L', KD:'KDL'};
+function applyHolidayIfNeeded(y, m, d, code){
+  if(!isHoliday(y, m, d)) return code;
+  if(HOLIDAY_WORK_MAP[code]) return HOLIDAY_WORK_MAP[code];
+  if(code==='') return 'L';
+  return code;
+}
+async function saveHoliday(dateStr, label){
+  if(!state.holidays) state.holidays = {};
+  if(!label) delete state.holidays[dateStr]; else state.holidays[dateStr] = label;
+  try{ await api('PUT', '/api/state/holidays', {dateStr, label: label||''}); }
+  catch(e){ alert('Không lưu được: '+e.message); }
+}
+
 /* Cac ham tinh toan ben duoi deu nhan "common" (Common CUA DUNG THANG dang xem: employees/kips/bacTable/
    settings) lam tham so dau tien - vi tu ban co Common rieng theo tung thang, khong con 1 cau hinh
    toan cuc dung chung nua. Xem bien module-level `common` (thang dang active tren giao dien) va
@@ -93,12 +133,12 @@ function computeFinalCode(common, emp, y, m, d){
         else if(pair[1]===emp.id) partnerId = pair[0];
         if(partnerId){
           const partner = common.employees.find(e=>e.id===partnerId);
-          if(partner) return computeAutoCode(common, partner, y, m, d);
+          if(partner) return applyHolidayIfNeeded(y, m, d, computeAutoCode(common, partner, y, m, d));
         }
       }
     }
   }
-  return computeAutoCode(common, emp, y, m, d);
+  return applyHolidayIfNeeded(y, m, d, computeAutoCode(common, emp, y, m, d));
 }
 // emp o day luon la nhan su cua DUNG thang dang xem (lay tu common.employees cua thang do), nen
 // emp.allow la nguon duy nhat - khong con map state.monthlyAllowances rieng nua (da gop/don ben server).
@@ -248,6 +288,7 @@ function applyRolePermissions(){
   document.querySelectorAll('#tab-tonghopnam input').forEach(el=>{ el.disabled = isUser; });
   document.querySelectorAll('#tab-anca input').forEach(el=>{ el.disabled = isUser; });
   ['btnClear','btnExportCSV'].forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = isUser; });
+  document.querySelectorAll('#tab-ghichu input, #tab-ghichu button').forEach(el=>{ el.disabled = isUser; });
   const note = document.getElementById('commonRoleNote');
   if(note) note.classList.toggle('hidden', !isUser);
 }
@@ -266,6 +307,7 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
     if(btn.dataset.tab==='dangky') renderDangKy();
     if(btn.dataset.tab==='tonghopnam') renderTongHopNam();
     if(btn.dataset.tab==='anca') renderMeal();
+    if(btn.dataset.tab==='ghichu') renderHolidayMgmt();
   });
 });
 
@@ -761,12 +803,13 @@ function groupedRenderOrder(){
   });
   return order;
 }
-function makeTh(text,isName,wknd,narrow){
+function makeTh(text,isName,wknd,narrow,holTitle){
   const th=document.createElement('th');
   th.textContent=text;
   if(isName) th.classList.add('namecell');
   if(wknd) th.classList.add('weekend');
   if(narrow) th.classList.add('wcol');
+  if(holTitle){ th.classList.add('holcol'); th.title = holTitle; }
   return th;
 }
 
@@ -864,8 +907,9 @@ function renderCalendar(){
   for(let d=1; d<=nDays; d++){
     const dow = new Date(viewYear, viewMonth, d).getDay();
     const wknd = (dow===0||dow===6);
-    rowDow.appendChild(makeTh(WEEKDAY_LABELS[dow].replace('Thứ ','T').replace('Chủ nhật','CN'), false, wknd));
-    rowDate.appendChild(makeTh(String(d), false, wknd));
+    const holTitle = isHoliday(viewYear, viewMonth, d) ? holidayLabel(viewYear, viewMonth, d) : null;
+    rowDow.appendChild(makeTh(WEEKDAY_LABELS[dow].replace('Thứ ','T').replace('Chủ nhật','CN'), false, wknd, false, holTitle));
+    rowDate.appendChild(makeTh(String(d), false, wknd, false, holTitle));
   }
   ['Công','Ca 3','Lễ+phép','Du lịch','Bù lễ','Riêng lg','Ốm/TN/TS','Ca3 lễ','Phép','Lễ','Bù'].forEach(h=>{
     rowDow.appendChild(makeTh(h,false)); rowDate.appendChild(makeTh('',false));
@@ -1157,8 +1201,9 @@ function renderDangKy(){
   for(let d=1; d<=nDays; d++){
     const dow = new Date(viewYear, viewMonth, d).getDay();
     const wknd = (dow===0||dow===6);
-    rowDow.appendChild(makeTh(WEEKDAY_LABELS[dow].replace('Thứ ','T').replace('Chủ nhật','CN'), false, wknd));
-    rowDate.appendChild(makeTh(String(d), false, wknd));
+    const holTitle = isHoliday(viewYear, viewMonth, d) ? holidayLabel(viewYear, viewMonth, d) : null;
+    rowDow.appendChild(makeTh(WEEKDAY_LABELS[dow].replace('Thứ ','T').replace('Chủ nhật','CN'), false, wknd, false, holTitle));
+    rowDate.appendChild(makeTh(String(d), false, wknd, false, holTitle));
   }
   thead.appendChild(rowDow); thead.appendChild(rowDate);
   table.appendChild(thead);
@@ -1525,6 +1570,51 @@ function renderLegendTable(){
   });
 }
 
+function renderHolidayMgmt(){
+  const body = document.getElementById('holidayBody');
+  if(!body) return;
+  body.innerHTML = '';
+  const dates = Object.keys(state.holidays||{}).sort();
+  if(!dates.length){
+    body.innerHTML = '<tr><td colspan="3" style="color:var(--ink-soft)">Chưa có ngày lễ biến đổi nào được thêm.</td></tr>';
+  } else {
+    dates.forEach(dateStr=>{
+      const tr = document.createElement('tr');
+      const [y,m,d] = dateStr.split('-');
+      const tdDate = document.createElement('td');
+      tdDate.textContent = `${d}/${m}/${y}`;
+      const tdLabel = document.createElement('td');
+      tdLabel.textContent = state.holidays[dateStr];
+      const tdDel = document.createElement('td');
+      const btnDel = document.createElement('button');
+      btnDel.className = 'btn';
+      btnDel.textContent = '✕';
+      btnDel.title = 'Xoá ngày này';
+      btnDel.addEventListener('click', async ()=>{
+        await saveHoliday(dateStr, '');
+        renderHolidayMgmt();
+        renderCalendar(); renderDangKy();
+      });
+      tdDel.appendChild(btnDel);
+      tr.appendChild(tdDate); tr.appendChild(tdLabel); tr.appendChild(tdDel);
+      body.appendChild(tr);
+    });
+  }
+  applyRolePermissions();
+}
+document.getElementById('btnAddHoliday').addEventListener('click', async ()=>{
+  const dateEl = document.getElementById('holNewDate');
+  const labelEl = document.getElementById('holNewLabel');
+  const dateStr = dateEl.value;
+  const label = labelEl.value.trim();
+  if(!dateStr){ alert('Chọn ngày trước đã bạn.'); return; }
+  if(!label){ alert('Nhập ghi chú (tên ngày lễ) trước đã bạn.'); return; }
+  await saveHoliday(dateStr, label);
+  dateEl.value = ''; labelEl.value = '';
+  renderHolidayMgmt();
+  renderCalendar(); renderDangKy();
+});
+
 /* ================= Khoi dong ung dung ================= */
 async function bootApp(){
   try{
@@ -1533,12 +1623,14 @@ async function bootApp(){
     return; // showLogin() da duoc goi ben trong api() neu 401
   }
   if(!state.phepOverrides) state.phepOverrides = {}; // phong ban server cu hon (chua co truong nay)
+  if(!state.holidays) state.holidays = {}; // phong ban server cu hon (chua co truong nay)
   initMonthYearControls();
   await refreshActiveCommon();
   renderCommon();
   renderBacTable();
   renderKipTable();
   renderLegendTable();
+  renderHolidayMgmt();
   renderCalendar();
   renderDangKy();
   if(currentRole==='admin'){ renderSnapshots(); renderShareBackups(); renderOnedriveStatus(); }
