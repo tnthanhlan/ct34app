@@ -119,6 +119,20 @@ function computeAutoCode(common, emp, y, m, d){
   const useShiftCodes = (emp.schedule==='CA') || (emp.schedule==='TAM' && emp.kipId);
   return (useShiftCodes ? CYCLE_CA : CYCLE_TAM)[idx];
 }
+// Tim "doi tac" doi ca cho 1 nguoi trong 1 ngay - xem giai thich day du (tai sao uu tien cap co ben kia
+// dang nghi F, vi sao chuoi doi ca nhieu buoc hoat dong duoc) trong server/server.js, ham cung ten.
+// PHAI khop chinh xac voi ban server vi day la tinh toan HIEN THI client.
+function resolveSwapPartnerId(reg, empId){
+  if(!reg || !reg.swaps) return null;
+  const relevant = reg.swaps.filter(p=>p[0]===empId || p[1]===empId);
+  if(!relevant.length) return null;
+  for(const p of relevant){
+    const otherId = p[0]===empId ? p[1] : p[0];
+    if(reg.phep && reg.phep.includes(otherId)) return otherId;
+  }
+  const p = relevant[0];
+  return p[0]===empId ? p[1] : p[0];
+}
 function computeFinalCode(common, emp, y, m, d){
   const dateStr = fmtDate(y,m,d);
   const manual = state.grid[emp.id] && state.grid[emp.id][dateStr];
@@ -126,16 +140,10 @@ function computeFinalCode(common, emp, y, m, d){
   const reg = state.registrations[dateStr];
   if(reg){
     if(reg.phep && reg.phep.includes(emp.id)) return 'F';
-    if(reg.swaps){
-      for(const pair of reg.swaps){
-        let partnerId = null;
-        if(pair[0]===emp.id) partnerId = pair[1];
-        else if(pair[1]===emp.id) partnerId = pair[0];
-        if(partnerId){
-          const partner = common.employees.find(e=>e.id===partnerId);
-          if(partner) return applyHolidayIfNeeded(y, m, d, computeAutoCode(common, partner, y, m, d));
-        }
-      }
+    const partnerId = resolveSwapPartnerId(reg, emp.id);
+    if(partnerId){
+      const partner = common.employees.find(e=>e.id===partnerId);
+      if(partner) return applyHolidayIfNeeded(y, m, d, computeAutoCode(common, partner, y, m, d));
     }
   }
   return applyHolidayIfNeeded(y, m, d, computeAutoCode(common, emp, y, m, d));
@@ -1013,9 +1021,8 @@ function isPhep(dateStr, empId){
 }
 function getSwapPartner(dateStr, empId){
   const r = state.registrations[dateStr];
-  if(!r || !r.swaps) return null;
-  for(const pair of r.swaps){ if(pair[0]===empId) return pair[1]; if(pair[1]===empId) return pair[0]; }
-  return null;
+  if(!r) return null;
+  return resolveSwapPartnerId(r, empId);
 }
 const SWAP_PAIR_COLORS = ['#BEE3F8','#D9F2D2','#FFE3B3','#E4D6F7','#FFD3DE','#C8ECEA','#F5E1B8','#D6E4F0'];
 function getSwapPairColor(dateStr, empId){
@@ -1127,19 +1134,28 @@ function openLeavePopup(anchorEl, dateStr, empId){
 
 async function onSwapCellClick(dateStr, empId){
   try{
-    const partner = getSwapPartner(dateStr, empId);
-    if(partner){
-      await api('DELETE', '/api/state/registrations/swap', {dateStr, empId});
-      if(state.registrations[dateStr]) state.registrations[dateStr].swaps = state.registrations[dateStr].swaps.filter(p=>p[0]!==empId && p[1]!==empId);
-      pendingSwap = null;
-    } else if(pendingSwap && pendingSwap.dateStr===dateStr && pendingSwap.empId===empId){
+    // UU TIEN: neu DANG co 1 o cho san sang tu luot click truoc (pendingSwap), click lan nay LUON la de
+    // HOAN TAT cap doi ca moi voi o vua click - KE CA KHI o nay DA co san 1 doi tac khac tu truoc (vd
+    // dang di lam bu cho 1 nguoi khac dang nghi F). Phai kiem tra pendingSwap TRUOC khi kiem tra "o nay
+    // da co doi tac chua" - neu lam nguoc lai (như ban cu), 1 nguoi da "dinh" vao 1 cap roi se KHONG
+    // THE nao duoc chon lam ve thu 2 cua 1 cap MOI nua (moi lan click vao se bi hieu nham thanh "huy cap
+    // cu" thay vi "noi them cap moi"), day chinh la ly do truoc day chi doi ca duoc 1 lan/nguoi/ngay -
+    // gio sua lai thi 1 nguoi co the VUA bu cho nguoi khac VUA duoc nguoi thu 3 bu lai cho minh (chuoi
+    // nhieu buoc), xem giai thich day du o resolveSwapPartnerId/computeFinalCode.
+    if(pendingSwap && pendingSwap.dateStr===dateStr && pendingSwap.empId===empId){
       pendingSwap = null;
     } else if(pendingSwap && pendingSwap.dateStr===dateStr){
       const r = await api('POST', '/api/state/registrations/swap', {dateStr, empIdA: pendingSwap.empId, empIdB: empId});
       state.registrations[dateStr] = r;
       pendingSwap = null;
     } else {
-      pendingSwap = {dateStr, empId};
+      const partner = getSwapPartner(dateStr, empId);
+      if(partner){
+        await api('DELETE', '/api/state/registrations/swap', {dateStr, empId});
+        if(state.registrations[dateStr]) state.registrations[dateStr].swaps = state.registrations[dateStr].swaps.filter(p=>p[0]!==empId && p[1]!==empId);
+      } else {
+        pendingSwap = {dateStr, empId};
+      }
     }
   }catch(e){
     alert('Không lưu được đăng ký: '+e.message);
@@ -1241,7 +1257,19 @@ function renderRegSummary(nDays){
         }
       }
     });
-    (r.swaps||[]).forEach(pair=>lines.push(`Ngày ${d}: <b>${escapeHtml(empNameById(pair[0]))}</b> đổi ca với <b>${escapeHtml(empNameById(pair[1]))}</b>`));
+    (r.swaps||[]).forEach(pair=>{
+      // Neu 1 trong 2 ben dang nghi F that su, ghi ro la "che ca cho" (1 chieu) thay vi "doi ca" (de
+      // nguoi doc khong hieu nham la 2 ben tu nguyen trao doi ca cho nhau).
+      const aAbsent = (r.phep||[]).includes(pair[0]);
+      const bAbsent = (r.phep||[]).includes(pair[1]);
+      if(aAbsent && !bAbsent){
+        lines.push(`Ngày ${d}: <b>${escapeHtml(empNameById(pair[1]))}</b> đi làm bù ca cho <b>${escapeHtml(empNameById(pair[0]))}</b> (đang nghỉ F)`);
+      } else if(bAbsent && !aAbsent){
+        lines.push(`Ngày ${d}: <b>${escapeHtml(empNameById(pair[0]))}</b> đi làm bù ca cho <b>${escapeHtml(empNameById(pair[1]))}</b> (đang nghỉ F)`);
+      } else {
+        lines.push(`Ngày ${d}: <b>${escapeHtml(empNameById(pair[0]))}</b> đổi ca với <b>${escapeHtml(empNameById(pair[1]))}</b>`);
+      }
+    });
   }
   // Cac loai nghi khac (ngoai F) duoc chon qua popup, luu tren state.grid - liet ke them cho du.
   for(let d=1; d<=nDays; d++){

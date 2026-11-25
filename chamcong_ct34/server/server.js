@@ -316,6 +316,25 @@ function computeAutoCode(common, emp, y, m, d) {
   const useShiftCodes = (emp.schedule === 'CA') || (emp.schedule === 'TAM' && emp.kipId);
   return (useShiftCodes ? CYCLE_CA : CYCLE_TAM)[idx];
 }
+// Tim "doi tac" doi ca cho 1 nguoi trong 1 ngay, UU TIEN TUYET DOI cap nao ma NGUOI KIA dang nghi F
+// THAT SU (chac chan MINH la nguoi di lam bu cho ho, bat ke thu tu 2 phan tu trong cap hay thu tu cap
+// do trong mang swaps) - nho vay 1 nguoi co the VUA la "nguoi di lam bu" cho 1 nguoi dang nghi F, VUA
+// duoc 1 nguoi thu 3 lam bu lai cho chinh minh (chuoi doi ca nhieu buoc, vd: A nghi F -> B bu cho A ->
+// C bu lai ca goc cua B), khong con bi gioi han "1 nguoi chi doi ca duoc 1 lan/ngay" nhu truoc. Neu
+// khong cap nao co ben kia dang nghi F (doi ca TU NGUYEN giua 2 nguoi dang di lam binh thuong, khong ai
+// vang mat) thi lay cap DAU TIEN lien quan, cho ca 2 ben cung thay ma cua nhau (dung hanh vi "doi ca
+// ngang hang" truyen thong, khong doi khac so voi truoc).
+function resolveSwapPartnerId(reg, empId) {
+  if (!reg || !reg.swaps) return null;
+  const relevant = reg.swaps.filter(p => p[0] === empId || p[1] === empId);
+  if (!relevant.length) return null;
+  for (const p of relevant) {
+    const otherId = p[0] === empId ? p[1] : p[0];
+    if (reg.phep && reg.phep.includes(otherId)) return otherId;
+  }
+  const p = relevant[0];
+  return p[0] === empId ? p[1] : p[0];
+}
 function computeFinalCode(state, common, emp, y, m, d) {
   const dateStr = fmtDate(y, m, d);
   const manual = state.grid[emp.id] && state.grid[emp.id][dateStr];
@@ -323,16 +342,10 @@ function computeFinalCode(state, common, emp, y, m, d) {
   const reg = state.registrations[dateStr];
   if (reg) {
     if (reg.phep && reg.phep.includes(emp.id)) return 'F';
-    if (reg.swaps) {
-      for (const pair of reg.swaps) {
-        let partnerId = null;
-        if (pair[0] === emp.id) partnerId = pair[1];
-        else if (pair[1] === emp.id) partnerId = pair[0];
-        if (partnerId) {
-          const partner = common.employees.find(e => e.id === partnerId);
-          if (partner) return applyHolidayIfNeeded(state, y, m, d, computeAutoCode(common, partner, y, m, d));
-        }
-      }
+    const partnerId = resolveSwapPartnerId(reg, emp.id);
+    if (partnerId) {
+      const partner = common.employees.find(e => e.id === partnerId);
+      if (partner) return applyHolidayIfNeeded(state, y, m, d, computeAutoCode(common, partner, y, m, d));
     }
   }
   return applyHolidayIfNeeded(state, y, m, d, computeAutoCode(common, emp, y, m, d));
